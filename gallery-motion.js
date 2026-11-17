@@ -1,1 +1,38 @@
-(()=>{const main=document.querySelector('main');const intro=main?.querySelector('.intro');if(!main||!intro)return;const gallery=document.createElement('section');gallery.className='op-gallery-section';gallery.id='gallery';gallery.innerHTML='<div class="op-gallery-heading"><div><span class="op-kicker">THE VISUAL JOURNAL</span><h2>THE JACKET GALLERY</h2></div><p>Explore statement silhouettes, texture and movement from the demonstration collection.</p></div><div class="op-gallery-track" id="op-gallery-track"></div><div class="op-gallery-controls"><button type="button" data-gallery-dir="-1" aria-label="Previous photos">←</button><button type="button" data-gallery-dir="1" aria-label="Next photos">→</button></div>';intro.after(gallery);const track=gallery.querySelector('#op-gallery-track');const fallback=[...new Set(products.map(p=>p.img))];function populate(){const seen=new Set();const picks=products.filter(p=>{const k=p.img.split('?')[0];if(seen.has(k))return false;seen.add(k);return true}).slice(0,12);track.innerHTML=picks.map(p=>'<div class="op-gallery-card" role="group"><img loading="lazy" src="'+p.img+'" alt="'+p.name+'"><span>'+p.name.toUpperCase()+'</span></div>').join('')}populate();gallery.addEventListener('click',e=>{const b=e.target.closest('[data-gallery-dir]');if(b)track.scrollBy({left:Number(b.dataset.galleryDir)*Math.min(track.clientWidth*.8,450),behavior:'smooth'});const card=e.target.closest('.op-gallery-card');if(card&&!b){const i=[...track.children].indexOf(card);const seen=new Set();const p=products.filter(x=>{const k=x.img.split('?')[0];if(seen.has(k))return false;seen.add(k);return true})[i];if(p)location.hash='/product/'+encodeURIComponent(p.id)}});const observer=new MutationObserver(()=>{if(new Set(products.map(p=>p.img)).size>fallback.length){populate();observer.disconnect()}});observer.observe(document.querySelector('#products'),{childList:true});const nav=document.querySelector('header nav');if(nav&&!nav.querySelector('a[href="#gallery"]')){const a=document.createElement('a');a.href='#gallery';a.textContent='Gallery';nav.insertBefore(a,nav.querySelector('a[href="#story"]'))}})();
+(() => {
+  const gallery = document.querySelector('#gallery');
+  if (!gallery) return;
+
+  const track = gallery.querySelector('#op-gallery-track');
+  function populate() {
+    const seen = new Set();
+    const picks = products.filter(product => {
+      const image = product.img.split('?')[0];
+      if (seen.has(image)) return false;
+      seen.add(image);
+      return true;
+    }).slice(0, 12);
+
+    track.replaceChildren(...picks.map(product => {
+      const card = document.createElement('a');
+      card.className = 'op-gallery-card';
+      card.href = productUrl(product.id);
+      const image = new Image();
+      image.loading = 'lazy';
+      image.src = product.img;
+      image.alt = '';
+      const name = document.createElement('span');
+      name.textContent = product.name;
+      card.append(image, name);
+      return card;
+    }));
+  }
+
+  populate();
+  document.addEventListener('catalogue-images-updated', populate);
+  gallery.addEventListener('click', event => {
+    const control = event.target.closest('[data-gallery-dir]');
+    if (!control) return;
+    const distance = Math.min(track.clientWidth * .8, 450);
+    track.scrollBy({ left: Number(control.dataset.galleryDir) * distance, behavior: 'smooth' });
+  });
+})();

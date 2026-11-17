@@ -168,3 +168,29 @@ header :focus-visible, .hero :focus-visible, .op-runway :focus-visible {
   .heroText { max-width: 100%; }
   .heroText h1 { font-size: clamp(46px, 11vw, 76px); }
 }
+
+/* Standalone storefront pages */
+header nav a[aria-current="page"] { color: var(--champagne); }
+header nav a[aria-current="page"]::after { width: 100%; }
+
+.page-heading, #collections {
+  padding: clamp(52px, 8vw, 110px) 5%;
+}
+
+.page-heading p {
+  color: var(--muted);
+  line-height: 1.7;
+  margin-bottom: 28px;
+}
+
+.page-heading h1, #collections h1, .split h1 {
+  font: 500 clamp(44px, 7vw, 96px)/1 'Playfair Display', Georgia, serif;
+  letter-spacing: -.04em;
+  text-transform: none;
+  overflow-wrap: anywhere;
+}
+
+.split .cta { margin-top: 16px; }
+#story .cta { background: var(--champagne); border-color: var(--champagne); color: var(--obsidian); }
+#craft .cta, .page-heading .cta { background: var(--espresso); border-color: var(--espresso); color: var(--ivory); }
+.op-gallery-card { display: block; }
