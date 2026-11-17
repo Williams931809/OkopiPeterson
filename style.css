@@ -48,3 +48,123 @@ footer{background:#0b0b0b}footer strong{font-family:Manrope,Arial,sans-serif;fon
 .op-runway{padding:70px 0 85px;background:#f0f0ed;overflow:hidden}.op-runway-head{display:flex;justify-content:space-between;align-items:end;gap:20px;padding:0 4% 26px}.op-runway-head span{font-size:10px;font-weight:800;letter-spacing:.22em}.op-runway-head h2{margin:10px 0 0;font-size:clamp(33px,5vw,66px)}.op-runway-actions{display:flex;gap:7px}.op-runway-actions button{border:1px solid #111;background:transparent;color:#111;width:42px;height:42px;font-size:17px;transition:background .2s,color .2s}.op-runway-actions button:hover{background:#111;color:white}.op-runway-viewport{overflow-x:auto;scrollbar-width:none;overscroll-behavior-inline:contain}.op-runway-viewport::-webkit-scrollbar{display:none}.op-runway-track{display:flex;gap:14px;width:max-content;padding:0 4%}.op-runway-item{width:clamp(205px,24vw,350px);display:block;flex:none;transition:transform .35s}.op-runway-item:hover{transform:translateY(-7px)}.op-runway-image{overflow:hidden;background:#ddd;aspect-ratio:3/4}.op-runway-item img{width:100%;height:100%;object-fit:cover;transition:transform .8s cubic-bezier(.2,.7,.2,1)}.op-runway-item:hover img{transform:scale(1.09)}.op-runway-item span{display:block;font-size:9px;font-weight:800;letter-spacing:.17em;margin-top:14px;color:#777}.op-runway-item strong{display:block;font-size:15px;margin:6px 0}.op-runway-item small{font-size:12px;color:#666}.heroText{transform:translate3d(var(--op-parallax-x,0px),var(--op-parallax-y,0px),0);transition:transform .5s ease-out}.demo-ribbon,.demo-orders{display:none!important}
 @media(max-width:750px){.op-runway{padding:48px 0 55px}.op-runway-head{padding:0 4% 22px}.op-runway-head h2{font-size:34px}.op-runway-item{width:65vw}.op-runway-actions button{width:34px;height:36px}}
 @media(prefers-reduced-motion:reduce){.op-runway-item,.op-runway-item img,.heroText{transition:none!important;animation:none!important}}
+
+/* Maisonpé storefront palette */
+:root {
+  --obsidian: #111111;
+  --champagne: #c9a96e;
+  --ivory: #faf6ed;
+  --cream: #f8f1e6;
+  --espresso: #2b1d17;
+  --bronze: #9b6b43;
+  --paper: var(--cream);
+  --ink: var(--espresso);
+  --line: #dbccba;
+  --muted: #6b5142;
+}
+
+header, .op-promo, footer {
+  background: var(--obsidian);
+  color: var(--ivory);
+}
+
+header { border-color: #4d4030; }
+header button, header a { color: inherit; }
+header .brand, footer strong {
+  color: var(--champagne);
+  font-family: 'Playfair Display', Georgia, serif;
+}
+
+.hero {
+  align-items: center;
+  background: var(--obsidian);
+  color: var(--ivory);
+}
+
+.hero img {
+  inset: 0 0 0 auto;
+  width: 65%;
+  opacity: .85;
+  object-position: center;
+}
+
+.hero::after {
+  background: linear-gradient(90deg, var(--obsidian) 34%, transparent 80%);
+}
+
+.heroText { max-width: min(620px, 64%); }
+.heroText h1, .op-product-info h1 {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-weight: 500;
+  letter-spacing: -.04em;
+  line-height: 1;
+  text-transform: none;
+}
+
+.heroText h1 { font-size: clamp(52px, 8vw, 120px); }
+.heroText .cta {
+  background: var(--champagne);
+  border-color: var(--champagne);
+  color: var(--obsidian);
+}
+
+.heroText .cta:hover {
+  background: var(--ivory);
+  border-color: var(--ivory);
+}
+
+.op-runway {
+  background: var(--obsidian);
+  color: var(--ivory);
+  border-top: 1px solid #4d4030;
+}
+
+.op-runway-head h2, .op-related h2 {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-weight: 500;
+  letter-spacing: -.035em;
+  text-transform: none;
+}
+
+.op-runway-item span, .op-runway-item small { color: var(--champagne); }
+.op-runway-actions button { border-color: var(--champagne); color: var(--champagne); }
+.op-runway-actions button:hover { background: var(--champagne); color: var(--obsidian); }
+
+.product, .filters button, .filters button.active, .shop-toolbar select,
+.catalog-search, #op-product-page, .op-product-info select, dialog {
+  background: var(--cream);
+  color: var(--espresso);
+}
+
+.filters button.active { border-bottom-color: var(--bronze); }
+.filters button:hover, .split.cream { background: #eee0cf; }
+.intro p, .product p, .op-subtitle, .op-shipping, #op-related-grid span { color: var(--muted); }
+.product > button[data-add], .op-add, #bag .cta {
+  background: var(--espresso);
+  border-color: var(--espresso);
+  color: var(--ivory);
+}
+
+.op-product-info h1 { font-size: clamp(40px, 5vw, 76px); }
+.op-product-gallery > img { background: #e8d9c6; }
+.op-breadcrumb, .op-related, .op-product-info details,
+.op-product-info details:last-child { border-color: var(--line); }
+.op-divider { background: var(--line); }
+.op-product-info select, .op-thumbnails button { border-color: var(--bronze); }
+.op-add:hover { background: var(--ivory); color: var(--espresso); }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible {
+  outline-color: var(--bronze);
+}
+header :focus-visible, .hero :focus-visible, .op-runway :focus-visible {
+  outline-color: var(--champagne);
+}
+
+@media (max-width: 750px) {
+  .hero { align-items: end; }
+  .hero img { width: 100%; }
+  .hero::after {
+    background: linear-gradient(0deg, var(--obsidian), rgba(17, 17, 17, .6) 48%, transparent 85%);
+  }
+  .heroText { max-width: 100%; }
+  .heroText h1 { font-size: clamp(46px, 11vw, 76px); }
+}
