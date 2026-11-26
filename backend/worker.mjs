@@ -10,7 +10,7 @@ class RequestError extends Error {
   }
 }
 
-async function readJson(request) {
+async function readJson(request, raw = false) {
   if (request.headers.get('Content-Type')?.split(';')[0].trim().toLowerCase() !== 'application/json') {
     throw new RequestError(415, 'Send an application/json body.')
   }
@@ -30,7 +30,9 @@ async function readJson(request) {
       }
       body += decoder.decode(value, { stream: true })
     }
-    const data = JSON.parse(body + decoder.decode())
+    body += decoder.decode()
+    if (raw) return body
+    const data = JSON.parse(body)
     if (data && typeof data === 'object' && !Array.isArray(data)) return data
   } catch (error) {
     if (error instanceof RequestError) throw error
@@ -97,6 +99,10 @@ async function createOrder(request, db) {
   if (!Array.isArray(data.items) || data.items.length < 1 || data.items.length > 20) {
     throw new RequestError(400, 'An order must contain 1 to 20 line items.')
   }
+  const name = field(data.name, 120)
+  const phone = field(data.phone, 30)
+  const address = field(data.address, 500)
+  if (!/^[+0-9 ()-]{7,30}$/.test(phone)) throw new RequestError(400, 'Enter a valid phone number.')
   const items = new Map()
   for (const item of data.items) {
     if (typeof item?.id !== 'string' || !productId.test(item.id) || !sizes.has(item.size) ||
@@ -109,8 +115,8 @@ async function createOrder(request, db) {
     items.set(lineKey, { id: item.id, size: item.size, quantity })
   }
   const lines = JSON.stringify([...items.keys()].sort().map(key => items.get(key)))
-  const hash = hex(await digest(JSON.stringify([email, lines])))
-  const receipt = 'id, currency, total_minor, status, created_at'
+  const hash = hex(await digest(JSON.stringify([email, name, phone, address, lines])))
+  const receipt = 'id, currency, total_minor, status, created_at, checkout_state, checkout_url, payment_mode'
   const order = await db.prepare(`
     WITH cart AS (
       SELECT json_extract(value, '$.id') AS id,
@@ -118,24 +124,135 @@ async function createOrder(request, db) {
              json_extract(value, '$.quantity') AS quantity
       FROM json_each(?)
     )
-    INSERT INTO orders (id, idempotency_key, request_hash, customer_email, total_minor, items_json)
-    SELECT ?, ?, ?, ?, SUM(p.price_minor * c.quantity),
+    INSERT INTO orders (id, idempotency_key, request_hash, customer_email, customer_name, customer_phone, shipping_address, total_minor, items_json)
+    SELECT ?, ?, ?, ?, ?, ?, ?, SUM(p.price_minor * c.quantity),
       json_group_array(json_object('id', p.id, 'name', p.name, 'size', c.size,
         'quantity', c.quantity, 'unit_price_minor', p.price_minor))
     FROM cart c JOIN products p ON p.id = c.id AND p.active = 1
     HAVING COUNT(*) = (SELECT COUNT(*) FROM cart)
     ON CONFLICT(idempotency_key) DO NOTHING
     RETURNING ${receipt}
-  `).bind(lines, crypto.randomUUID(), key, hash, email).first()
+  `).bind(lines, crypto.randomUUID(), key, hash, email, name, phone, address).first()
 
-  if (order) return Response.json({ order }, { status: 201 })
+  if (order) return { order, email, name, phone }
   const previous = await db.prepare(`
     SELECT ${receipt}, request_hash FROM orders WHERE idempotency_key = ?
   `).bind(key).first()
   if (!previous) throw new RequestError(409, 'One or more products are unavailable.')
   if (previous.request_hash !== hash) throw new RequestError(409, 'Order key already used.')
   const { request_hash: ignored, ...existing } = previous
-  return Response.json({ order: existing })
+  return { order: existing, email, name, phone }
+}
+
+const paymentMode = env => env.FLW_MODE === 'live' ? 'live' : 'test'
+
+function paymentsReady(env) {
+  const secret = env.FLW_SECRET_KEY ?? ''
+  const correctKey = paymentMode(env) === 'test'
+    ? secret.startsWith('FLWSECK_TEST-')
+    : secret.startsWith('FLWSECK-') && !secret.startsWith('FLWSECK_TEST-')
+  return Boolean(correctKey && env.FLW_WEBHOOK_SECRET && env.STOREFRONT_ORIGIN && env.WORKER_ORIGIN)
+}
+
+async function flutterwave(env, path, body) {
+  const response = await fetch('https://api.flutterwave.com/v3' + path, {
+    method: body ? 'POST' : 'GET',
+    headers: {
+      Authorization: 'Bearer ' + env.FLW_SECRET_KEY,
+      'Content-Type': 'application/json',
+    },
+    body: body ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(12000),
+  })
+  const result = await response.json()
+  if (!response.ok || result.status !== 'success') {
+    throw new RequestError(502, 'Flutterwave is temporarily unavailable.')
+  }
+  return result.data
+}
+
+async function startCheckout(request, env) {
+  const { order, email, name, phone } = await createOrder(request, env.DB)
+  const mode = paymentMode(env)
+  if (order.status !== 'pending_payment' || (order.payment_mode && order.payment_mode !== mode)) {
+    throw new RequestError(409, 'Start a new checkout for this bag.')
+  }
+  if (order.checkout_url) return Response.json({ url: order.checkout_url, order: order.id })
+  const claimed = await env.DB.prepare(`
+    UPDATE orders SET checkout_state = 'starting', payment_mode = ?
+    WHERE id = ? AND status = 'pending_payment' AND checkout_state IS NULL RETURNING id
+  `).bind(mode, order.id).first()
+  if (!claimed) throw new RequestError(409, 'This checkout is already processing.')
+  const data = await flutterwave(env, '/payments', {
+    amount: (order.total_minor / 100).toFixed(2),
+    currency: order.currency,
+    tx_ref: order.id,
+    redirect_url: new URL('/payments/flutterwave/return', env.WORKER_ORIGIN).href,
+    customer: { email, name, phonenumber: phone },
+    customizations: { title: 'Maisonpé' },
+    configurations: { session_duration: 30, max_retry_attempt: 3 },
+  })
+  const url = new URL(data.link)
+  if (url.origin !== 'https://checkout.flutterwave.com') {
+    throw new RequestError(502, 'Unexpected checkout destination.')
+  }
+  await env.DB.prepare("UPDATE orders SET checkout_state = 'ready', checkout_url = ? WHERE id = ?")
+    .bind(url.href, order.id).run()
+  return Response.json({ url: url.href, order: order.id })
+}
+
+function amountInKobo(value) {
+  const parts = /^(\d+)(?:\.(\d{1,2}))?$/.exec(String(value))
+  if (!parts) return NaN
+  return Number(parts[1]) * 100 + Number((parts[2] ?? '').padEnd(2, '0'))
+}
+
+async function verifyPayment(env, reference, transactionId) {
+  if (!paymentsReady(env)) throw new RequestError(503, 'Payment verification is unavailable.')
+  const order = await env.DB.prepare(`
+    SELECT id, currency, total_minor, status, payment_reference, payment_mode
+    FROM orders WHERE id = ?
+  `).bind(reference).first()
+  if (!order || order.payment_mode !== paymentMode(env)) return
+  if (order.status === 'paid' && order.payment_reference === transactionId) return
+  const payment = await flutterwave(env, '/transactions/' + transactionId + '/verify')
+  if (String(payment.id) !== transactionId || payment.tx_ref !== order.id ||
+      payment.status !== 'successful' || payment.currency !== order.currency ||
+      amountInKobo(payment.amount) !== order.total_minor) return
+  await env.DB.prepare(`
+    UPDATE orders SET status = 'paid', payment_reference = ?
+    WHERE id = ? AND status = 'pending_payment'
+      AND NOT EXISTS (SELECT 1 FROM orders WHERE payment_reference = ?)
+  `).bind(transactionId, order.id, transactionId).run()
+}
+
+async function receiveWebhook(request, env) {
+  if (!env.FLW_WEBHOOK_SECRET) throw new RequestError(503, 'Webhook is unavailable.')
+  const raw = await readJson(request, true)
+  const signature = request.headers.get('flutterwave-signature') ?? ''
+  const legacy = request.headers.get('verif-hash') ?? ''
+  const key = await crypto.subtle.importKey(
+    'raw', encoder.encode(env.FLW_WEBHOOK_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+  )
+  const mac = await crypto.subtle.sign('HMAC', key, encoder.encode(raw))
+  const expected = btoa(String.fromCharCode(...new Uint8Array(mac)))
+  const valid = signature
+    ? crypto.subtle.timingSafeEqual(await digest(signature), await digest(expected))
+    : Boolean(legacy && crypto.subtle.timingSafeEqual(await digest(legacy), await digest(env.FLW_WEBHOOK_SECRET)))
+  if (!valid) throw new RequestError(401, 'Invalid webhook signature.')
+  let payload
+  try {
+    payload = JSON.parse(raw)
+  } catch {
+    throw new RequestError(400, 'Invalid webhook body.')
+  }
+  const reference = payload?.data?.tx_ref ?? ''
+  const transactionId = String(payload?.data?.id ?? '')
+  if ((payload.event === 'charge.completed' || payload.type === 'charge.completed') &&
+      uuid.test(reference) && /^\d{1,20}$/.test(transactionId)) {
+    await verifyPayment(env, reference, transactionId)
+  }
+  return new Response(null, { status: 200 })
 }
 
 async function route(request, env) {
@@ -151,11 +268,35 @@ async function route(request, env) {
       SELECT id, name, category, description, image_url, price_minor
       FROM products WHERE active = 1 ORDER BY name, id
     `).all()
-    return Response.json({ currency: 'NGN', products: results })
+    return Response.json({ currency: 'NGN', products: results, checkout_enabled: paymentsReady(env), payment_mode: paymentMode(env) })
   }
   if (pathname === '/api/orders' && method === 'POST') {
-    if (env.ORDERS_ENABLED !== 'true') throw new RequestError(503, 'Ordering is closed.')
-    return createOrder(request, env.DB)
+    if (!paymentsReady(env)) throw new RequestError(503, 'Online checkout is unavailable.')
+    return startCheckout(request, env)
+  }
+  if (pathname === '/payments/flutterwave/return' && method === 'GET') {
+    const reference = searchParams.get('tx_ref') ?? ''
+    const transactionId = searchParams.get('transaction_id') ?? ''
+    if (uuid.test(reference) && /^\d{1,20}$/.test(transactionId)) {
+      try {
+        await verifyPayment(env, reference, transactionId)
+      } catch {
+        console.error(JSON.stringify({ event: 'flutterwave_return_verification_pending' }))
+      }
+    }
+    const target = new URL('/payment.html', env.STOREFRONT_ORIGIN)
+    if (uuid.test(reference)) target.searchParams.set('order', reference)
+    return new Response(null, { status: 303, headers: { Location: target.href } })
+  }
+  if (pathname === '/payments/flutterwave/webhook' && method === 'POST') {
+    return receiveWebhook(request, env)
+  }
+  const status = /^\/api\/orders\/([^/]+)$/.exec(pathname)
+  if (status && uuid.test(status[1]) && method === 'GET') {
+    const order = await env.DB.prepare('SELECT status, payment_mode FROM orders WHERE id = ?')
+      .bind(status[1]).first()
+    if (!order) throw new RequestError(404, 'Order not found.')
+    return Response.json({ order })
   }
   if (pathname.startsWith('/api/admin/')) {
     await requireAdmin(request, env)
@@ -173,7 +314,7 @@ async function route(request, env) {
         throw new RequestError(400, 'Invalid page.')
       }
       const { results } = await env.DB.prepare(`
-        SELECT id, customer_email, currency, total_minor, items_json, status,
+        SELECT id, customer_email, customer_name, customer_phone, shipping_address, payment_mode, currency, total_minor, items_json, status,
                payment_reference, created_at
         FROM orders ORDER BY created_at DESC, id DESC LIMIT 51 OFFSET ?
       `).bind((page - 1) * 50).all()
@@ -188,7 +329,7 @@ async function route(request, env) {
     if (cancellation && uuid.test(cancellation[1]) && method === 'POST') {
       const order = await env.DB.prepare(`
         UPDATE orders SET status = 'cancelled'
-        WHERE id = ? AND status IN ('pending_payment', 'cancelled')
+        WHERE id = ? AND status IN ('pending_payment', 'cancelled') AND checkout_state IS NULL
         RETURNING id, status
       `).bind(cancellation[1]).first()
       if (!order) throw new RequestError(409, 'Order cannot be cancelled.')

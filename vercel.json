@@ -8,6 +8,18 @@
     {
       "source": "/api/products",
       "destination": "https://maisonpe-api.thankgododiawa6.workers.dev/api/products"
+    },
+    {
+      "source": "/api/orders/:path*",
+      "destination": "https://maisonpe-api.thankgododiawa6.workers.dev/api/orders/:path*"
+    },
+    {
+      "source": "/api/orders",
+      "destination": "https://maisonpe-api.thankgododiawa6.workers.dev/api/orders"
+    },
+    {
+      "source": "/api/admin/:path*",
+      "destination": "https://maisonpe-api.thankgododiawa6.workers.dev/api/admin/:path*"
     }
   ]
 }

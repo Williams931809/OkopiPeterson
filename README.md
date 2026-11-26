@@ -1,36 +1,39 @@
 # Maisonpé
 
-The storefront is static HTML, CSS, and JavaScript. Open index.html to preview it. Its shopping bag, demo catalog, and demo admin remain local to the browser.
+The static storefront is hosted on Vercel. Its catalog, checkout and store operations
+use same-origin API paths that Vercel rewrites to the Cloudflare Worker. D1 stores
+published products and order records. Until products are published, the storefront
+displays its sample collection with checkout closed.
 
-## Cloudflare backend
+- Storefront: https://okopipeterson.vercel.app/
+- Store operations: https://okopipeterson.vercel.app/operations.html
+- Worker health: https://maisonpe-api.thankgododiawa6.workers.dev/health
 
-The Worker in `backend/` uses Cloudflare D1. The deployed API is
-[maisonpe-api.thankgododiawa6.workers.dev](https://maisonpe-api.thankgododiawa6.workers.dev/health).
+## Configure Flutterwave
 
-| Method and path | Behavior |
-| --- | --- |
-| GET /health | Verify the Worker can read both D1 tables. |
-| GET /api/products | List published products with NGN prices in kobo. |
-| POST /api/orders | Record an unpaid order from product IDs, sizes and quantities when ordering is enabled. |
-| GET /api/admin/products | List all products, including unpublished ones. |
-| PUT /api/admin/products/{id} | Create or update a product. |
-| GET /api/admin/orders?page=1 | List orders and their original line items. |
-| POST /api/admin/orders/{id}/cancel | Cancel an unpaid order. |
+1. Open **Workers & Pages → maisonpe-api → Settings → Variables and Secrets** in
+   Cloudflare. Add `FLW_SECRET_KEY` as a **Secret**. The Worker defaults to test mode
+   and expects a Flutterwave v3 test secret key.
+2. Choose a random webhook secret. Save it as the **Secret** `FLW_WEBHOOK_SECRET` in
+   Cloudflare and as the webhook secret hash in the matching Flutterwave environment.
+   Set the Flutterwave webhook URL to
+   `https://maisonpe-api.thankgododiawa6.workers.dev/payments/flutterwave/webhook`.
+3. Set a random admin token of at least 32 characters as the **Secret**
+   `ADMIN_API_TOKEN`. Enter the token on the Store Operations page to manage
+   products and review orders. Publish the approved catalog and prices there.
+4. Test checkout and verify the test order appears in Store Operations. To accept
+   real payments, set the Worker variable `FLW_MODE` to `live`, install the matching
+   live secret key and webhook configuration, and deploy the updated settings.
+   Orders retain the mode in which they were created. Never fulfill a test order.
 
-Admin endpoints require a Bearer token. Store a random token of at least 32 characters as the
-`ADMIN_API_TOKEN` Worker secret and use it only from a trusted server or operator client.
-Admin endpoints stay disabled until that secret is set.
+The Worker creates a hosted payment with the order's D1 price and a unique reference.
+A return or signed webhook triggers verification against Flutterwave. The Worker checks
+the transaction ID, reference, successful status, currency and exact amount before
+marking the order paid. Checkout stays closed until both Flutterwave secrets for the
+configured mode are available.
 
-A product accepts `name`, `category`, `price_minor` (kobo), and a boolean `active`.
-Optional fields are `description` and `image_url` (HTTPS). The public catalog starts
-empty for approved products and prices to be entered separately.
+## Development
 
-Order requests require a fresh UUID v4 in the `Idempotency-Key` header and a JSON body
-with `email` and `items`. Each item contains `id`, `size`, and `quantity`. Reuse the key
-when retrying the same order. The Worker prices each order from D1 and saves a snapshot
-of the line items. Customer ordering is disabled until the storefront and Flutterwave
-payment verification are integrated. Production payment credentials belong in Worker secrets.
-
-Run Cloudflare commands from `backend/`. Install with `npm ci` and check the Worker with
-`npm run check` and `npx cf build`. SQL migrations are in `backend/migrations/`.
-The deployed D1 database already has the initial schema.
+Run Cloudflare commands from `backend/`. Install with `npm ci` and check the Worker
+with `npm run check` and `npx cf build`. Database migrations are in
+`backend/migrations/`. The deployed D1 database has both migrations applied.

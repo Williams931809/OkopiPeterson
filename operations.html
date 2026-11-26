@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Store operations | Maisonpé</title>
+  <link rel="stylesheet" href="/style.css">
+  <script defer src="/operations.js"></script>
+</head>
+<body>
+  <main class="page-heading">
+    <h1>Maisonpé store operations</h1>
+    <form id="sign-in" class="checkout-form">
+      <label>Admin access token <input name="token" type="password" autocomplete="current-password" required></label>
+      <button class="cta">Open store operations</button>
+    </form>
+    <p id="notice" role="status"></p>
+    <section id="operations" hidden>
+      <button id="sign-out" type="button">Lock operations</button>
+      <h2>Catalog</h2>
+      <ul id="products-list"></ul>
+      <form id="product-form" class="checkout-form">
+        <label>Product ID <input name="id" required pattern="[a-z0-9][a-z0-9\-]{0,63}"></label>
+        <label>Name <input name="name" required></label>
+        <label>Category <input name="category" required></label>
+        <label>Price (₦) <input name="price" required inputmode="decimal"></label>
+        <label>Image URL <input name="image_url" type="url"></label>
+        <label>Description <textarea name="description"></textarea></label>
+        <label><input name="active" type="checkbox" style="width:auto"> Publish product</label>
+        <button class="cta">Save product</button>
+        <button type="reset">New product</button>
+      </form>
+      <h2>Orders</h2>
+      <ul id="orders-list"></ul>
+      <button type="button" id="previous">Previous page</button>
+      <button type="button" id="next">Next page</button>
+    </section>
+  </main>
+</body>
+</html>

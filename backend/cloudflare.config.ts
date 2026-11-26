@@ -11,7 +11,9 @@ export default defineConfig({
     observability: { enabled: true, traces: { enabled: true } },
     env: {
       DB: bindings.d1({ id: '3a6138c5-97fd-4778-9429-e8e3ccaa217a', name: 'maisonpe' }),
-      ORDERS_ENABLED: bindings.text('false'),
+      FLW_MODE: bindings.text('test'),
+      STOREFRONT_ORIGIN: bindings.text('https://okopipeterson.vercel.app'),
+      WORKER_ORIGIN: bindings.text('https://maisonpe-api.thankgododiawa6.workers.dev'),
     },
   },
 })
