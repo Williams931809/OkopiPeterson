@@ -1,98 +1,95 @@
 body.tracking-page {
-  display: grid;
-  align-items: center;
-  justify-items: center;
   min-height: 100vh;
-  min-height: 100dvh;
-  padding: clamp(1rem, 5vw, 3rem);
-  background: var(--obsidian);
-  color: var(--espresso);
+  background: #f8f7f4;
+  color: #25211c;
+  font-family: 'DM Sans', Arial, sans-serif;
 }
-
-.tracking-panel {
-  width: min(100%, 34rem);
-  padding: clamp(1.25rem, 5vw, 2.5rem);
-  border: 1px solid var(--line);
-  background: var(--cream);
-  overflow-wrap: anywhere;
+.tracking-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem clamp(1rem, 5vw, 4rem);
+  background: #fff;
+  border-bottom: 1px solid #e6e0d7;
 }
-
-.tracking-panel h1 {
-  margin: 0 0 1.75rem;
-  font-size: clamp(2.25rem, 7vw, 4rem);
-  line-height: 1.04;
-  letter-spacing: -.045em;
+.tracking-header a:first-child { font-family: Italiana, Georgia, serif; letter-spacing: .14em; font-size: 1.3rem; }
+.tracking-header a:last-child { font-size: .875rem; text-decoration: underline; text-underline-offset: .2em; }
+.tracking-panel { width: min(64rem, 100%); margin: auto; padding: clamp(1rem, 4vw, 3rem); overflow-wrap: anywhere; }
+.tracking-lookup, #order-details { background: #fff; border: 1px solid #e6e0d7; border-radius: .85rem; padding: clamp(1rem, 4vw, 2rem); }
+.tracking-lookup { max-width: 37rem; margin: 0 auto; }
+.tracking-panel :is(h1, h2, h3) {
+  font: 500 1.6rem/1.2 Georgia, serif;
+  letter-spacing: -.025em;
+  text-transform: none;
+  margin: 0;
 }
-
-#track-form { display: grid; gap: 1rem; }
-
-#track-form label {
-  display: grid;
-  gap: .4rem;
-  min-width: 0;
-  font-size: .875rem;
-  font-weight: 600;
-}
-
+.tracking-panel h1 { text-align: center; font-size: clamp(1.8rem, 5vw, 2.5rem); margin-bottom: 1.4rem; }
+#track-form { display: grid; gap: .85rem; }
+#track-form label { display: grid; gap: .3rem; min-width: 0; font-size: .875rem; }
 #track-form input {
   width: 100%;
-  min-width: 0;
   min-height: 46px;
-  padding: .65rem .75rem;
-  border: 1px solid #a6917c;
-  background: #fff;
+  padding: .65rem .8rem;
+  border: 1px solid #dfd9d0;
+  border-radius: .45rem;
+  background: #f7f5f1;
   color: inherit;
   font: inherit;
   font-size: 1rem;
 }
-
-#track-form .cta, .tracking-back, #print-order {
-  min-height: 46px;
-  padding: .75rem;
-  border: 1px solid var(--espresso);
-  font: 600 .9rem/1.3 'DM Sans', sans-serif;
-  text-align: center;
+#track-form button, #print-order { min-height: 44px; padding: .7rem 1rem; border: 1px solid #8a632c; border-radius: .45rem; font: 600 .9rem 'DM Sans', Arial, sans-serif; }
+#track-form button { background: #8a632c; color: #fff; }
+#print-order { background: #fff; color: #25211c; }
+#track-message { margin: .85rem 0 0; }
+#track-message:empty { margin: 0; }
+#order-details { margin-top: 1.25rem; }
+.shipment-heading { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: .6rem 1rem; }
+#order-reference, #shipment-updated, #order-fulfillment { color: #62584d; font-size: .875rem; }
+#order-reference { margin: 0 0 .35rem; }
+#shipment-progress:not([hidden]) {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  list-style: none;
+  margin: 1.6rem 0 1rem;
+  padding: 0;
 }
-
-#track-form .cta {
-  margin-top: .35rem;
-  background: var(--espresso);
-  color: var(--ivory);
+#shipment-progress li { position: relative; text-align: center; font-size: .875rem; color: #62584d; }
+#shipment-progress li::before {
+  content: '';
+  position: absolute;
+  left: -50%;
+  right: 50%;
+  top: .8rem;
+  height: 3px;
+  background: #ded8ce;
 }
-
-.tracking-back, #print-order {
+#shipment-progress li:first-child::before { content: none; }
+#shipment-progress li[data-reached]::before { background: #23764c; }
+#shipment-progress span {
+  position: relative;
   display: grid;
   place-items: center;
-  background: transparent;
-  color: var(--espresso);
+  width: 1.75rem;
+  height: 1.75rem;
+  margin: 0 auto .5rem;
+  border-radius: 50%;
+  background: #eeeae4;
+  font-weight: 700;
 }
-
-.tracking-back { margin-top: .85rem; }
-
-#track-message { font-size: .9rem; }
-#track-message:empty { margin: 0; }
-
-#order-details {
-  margin-top: 1.5rem;
-  padding-top: 1.25rem;
-  border-top: 1px solid var(--line);
-}
-
-#order-details h2 {
-  margin: 0;
-  font: 500 1.5rem/1.2 'Playfair Display', Georgia, serif;
-  letter-spacing: 0;
-  text-transform: none;
-}
-
-#order-fulfillment:empty { display: none; }
-#order-items { padding-inline-start: 1.25rem; }
-#order-items li + li { margin-top: .5rem; }
-#order-total { font-weight: 700; }
-
+#shipment-progress li[data-reached] span { background: #23764c; color: white; }
+#shipment-progress li[aria-current] { color: #195a39; font-weight: 700; }
+#order-items { list-style: none; margin: 1rem 0; padding: 0; display: grid; gap: .55rem; }
+#order-items li, .shipment-information { border: 1px solid #e6e0d7; border-radius: .55rem; padding: .85rem; }
+#order-items li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .3rem 1rem; }
+#order-items small { grid-column: 1 / -1; color: #62584d; }
+.shipment-information summary { cursor: pointer; font-weight: 600; }
+#tracking-recommendations { margin-top: 2rem; padding-top: 1.25rem; border-top: 1px solid #e6e0d7; }
+#tracking-products { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr)); gap: 1rem; margin-top: 1rem; }
+#tracking-products a { display: grid; align-content: start; gap: .5rem; font-size: .875rem; }
+#tracking-products img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: .45rem; background: #eeeae4; }
 @media print {
-  body.tracking-page { display: block; padding: 0; background: #fff; }
-  .tracking-panel { width: 100%; padding: 0; border: 0; background: #fff; }
-  .tracking-panel h1, #track-form, #track-message, .tracking-back, #print-order { display: none; }
-  #order-details { margin: 0; padding: 0; border: 0; }
+  .tracking-header, .tracking-lookup, #tracking-recommendations, #print-order { display: none; }
+  body.tracking-page { background: white; }
+  .tracking-panel { padding: 0; }
 }
