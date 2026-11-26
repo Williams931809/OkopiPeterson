@@ -7,9 +7,9 @@
   <meta name="robots" content="noindex">
   <title>Track your order | Maisonpé</title>
   <link rel="stylesheet" href="/style.css">
-  <link rel="stylesheet" href="/track-order.css?v=shipment">
+  <link rel="stylesheet" href="/track-order.css?v=order-help">
   <script defer src="/order-cart.js"></script>
-  <script defer src="/track-order.js?v=shipment"></script>
+  <script defer src="/track-order.js?v=order-help"></script>
 </head>
 <body class="tracking-page">
   <div class="tracking-header">
@@ -47,6 +47,23 @@
         <h3>You may also like</h3>
         <div id="tracking-products"></div>
       </section>
+    </section>
+    <section class="tracking-help" aria-labelledby="tracking-help-title">
+      <h2 id="tracking-help-title">Need help with your order?</h2>
+      <button id="copy-order-reference" type="button" hidden>Copy order reference</button>
+      <p id="copy-order-status" role="status"></p>
+      <details>
+        <summary>Where do I find my order reference?</summary>
+        <p>Check the payment confirmation page for your order reference. Enter it with the email address you used at checkout.</p>
+      </details>
+      <details>
+        <summary>Why hasn’t my tracking updated?</summary>
+        <p>Tracking updates as Maisonpé processes, packs, and ships your order. Once available, the courier and tracking number appear below the shipment timeline.</p>
+      </details>
+      <details>
+        <summary>What if I paid and my order still says payment pending?</summary>
+        <p>Look up the order again after payment verification. Keep your order reference and payment receipt handy if you need to follow up.</p>
+      </details>
     </section>
   </main>
 </body>

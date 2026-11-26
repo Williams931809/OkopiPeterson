@@ -65,6 +65,18 @@ function renderOrder(order) {
   document.querySelector('#order-total').textContent = 'Order total ' + money(order.total_minor, order.currency)
 }
 
+const copyReference = document.querySelector('#copy-order-reference')
+const copyStatus = document.querySelector('#copy-order-status')
+let trackedReference = ''
+copyReference.addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(trackedReference)
+    copyStatus.textContent = 'Order reference copied.'
+  } catch {
+    copyStatus.textContent = 'Order reference ' + trackedReference
+  }
+})
+
 let lookup = 0
 async function loadRecommendations(order, request) {
   try {
@@ -98,6 +110,8 @@ form.addEventListener('submit', async event => {
   const request = ++lookup
   const button = form.querySelector('button')
   details.hidden = true
+  copyReference.hidden = true
+  copyStatus.textContent = ''
   recommendations.hidden = true
   button.disabled = true
   message.textContent = 'Looking up your order…'
@@ -112,6 +126,8 @@ form.addEventListener('submit', async event => {
     const { order } = result
     renderOrder(order)
     details.hidden = false
+    trackedReference = order.id
+    copyReference.hidden = false
     message.textContent = ''
     title.focus()
     if (order.status === 'paid') window.maisonpeOrders.settle(order.id)

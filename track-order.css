@@ -93,3 +93,30 @@ body.tracking-page {
   body.tracking-page { background: white; }
   .tracking-panel { padding: 0; }
 }
+
+.tracking-help {
+  max-width: 37rem;
+  margin: 1.25rem auto 0;
+  padding: clamp(1rem, 4vw, 2rem);
+  background: #fff;
+  border: 1px solid #e6e0d7;
+  border-radius: .85rem;
+}
+.tracking-help h2 { margin-bottom: .8rem; }
+.tracking-help details { border-top: 1px solid #e6e0d7; padding: .75rem 0; }
+.tracking-help summary { padding: .3rem 0; cursor: pointer; font-weight: 600; }
+.tracking-help p { color: #62584d; line-height: 1.55; }
+#copy-order-reference {
+  min-height: 44px;
+  margin-bottom: .8rem;
+  padding: .65rem 1rem;
+  border: 1px solid #8a632c;
+  border-radius: .45rem;
+  background: #fff;
+  color: inherit;
+  font: 600 .9rem 'DM Sans', Arial, sans-serif;
+}
+#copy-order-status:empty { margin: 0; }
+@media print {
+  .tracking-help { display: none; }
+}
