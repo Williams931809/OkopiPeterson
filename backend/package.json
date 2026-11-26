@@ -1,0 +1,22 @@
+{
+  "name": "maisonpe",
+  "version": "1.0.0",
+  "scripts": {
+    "check": "node --check worker.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Williams931809/OkopiPeterson.git"
+  },
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/Williams931809/OkopiPeterson/issues"
+  },
+  "homepage": "https://github.com/Williams931809/OkopiPeterson#readme",
+  "private": true,
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "2.0.0-rc.5",
+    "cf": "1.0.0-rc.6",
+    "vite": "8.4.0"
+  }
+}
