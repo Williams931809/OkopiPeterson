@@ -1,31 +1,39 @@
-.home-films {
-  padding: clamp(2.75rem, 6vw, 6rem) 5%;
-  border-top: 1px solid var(--line);
-  background: var(--cream);
-  color: var(--espresso);
+body.film-intro-active { overflow: hidden; }
+.home-films:not([hidden]) {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  background: #100e0d;
+  isolation: isolate;
 }
-.home-films h2 {
-  margin: 0 0 1.5rem;
-  font: 500 clamp(2rem, 5vw, 4rem)/1.1 'Playfair Display', Georgia, serif;
-  text-transform: none;
-  letter-spacing: -.04em;
+.film-sequence {
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-snap-type: y mandatory;
+  scrollbar-width: none;
 }
-.film-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: clamp(.85rem, 2vw, 1.75rem);
+.film-sequence::-webkit-scrollbar { display: none; }
+.film-sequence:focus { outline: none; }
+.film-slide, .film-end {
+  height: 100%;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  background: #100e0d;
 }
-.film-grid figure { margin: 0; }
-.film-grid video {
-  display: block;
-  width: 100%;
-  aspect-ratio: 9 / 16;
-  object-fit: contain;
-  background: var(--obsidian);
-  transition: box-shadow .25s ease;
+.film-slide video { display: block; width: 100%; height: 100%; object-fit: contain; }
+#skip-films {
+  position: absolute;
+  z-index: 1;
+  top: max(1rem, env(safe-area-inset-top));
+  right: max(1rem, env(safe-area-inset-right));
+  min-height: 44px;
+  padding: .6rem 1.1rem;
+  border: 1px solid #e7d6bf;
+  background: #16110eea;
+  color: #fff6e8;
+  font: 600 .875rem 'DM Sans', sans-serif;
 }
-.film-grid video:hover { box-shadow: 0 8px 24px #26180e26; }
-.film-grid figcaption { margin-top: .7rem; font-size: .95rem; }
-@media (max-width: 850px) { .film-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 430px) { .film-grid { grid-template-columns: minmax(0, 1fr); } }
-@media (prefers-reduced-motion: reduce) { .film-grid video { transition: none; } }
+@media (max-aspect-ratio: 3/4) {
+  .film-slide video { object-fit: cover; }
+}
