@@ -14,11 +14,7 @@ async function checkPayment(remaining) {
       paymentStatus.textContent = order.payment_mode === 'test'
         ? 'Test payment verified. No order will be shipped.'
         : 'Payment verified. Your order reference is ' + reference + '.'
-      const saved = JSON.parse(sessionStorage.getItem('maisonpe-checkout') ?? 'null')
-      if (saved?.order === reference) {
-        if (saved.bag === localStorage.getItem('okopiBag')) localStorage.removeItem('okopiBag')
-        sessionStorage.removeItem('maisonpe-checkout')
-      }
+      window.maisonpeOrders.settle(reference)
       return
     }
     if (order.status === 'cancelled') {
@@ -35,4 +31,9 @@ async function checkPayment(remaining) {
   }
 }
 
-checkPayment(5)
+const link = document.querySelector('#track-payment-order')
+if (/^[a-f0-9-]{36}$/i.test(reference ?? '')) {
+  link.href = '/track-order?order=' + encodeURIComponent(reference)
+  document.querySelector('#payment-reference').textContent = 'Order reference: ' + reference
+}
+checkPayment(8)

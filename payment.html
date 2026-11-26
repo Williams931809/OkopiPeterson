@@ -6,12 +6,15 @@
   <meta name="referrer" content="no-referrer">
   <title>Payment | Maisonpé</title>
   <link rel="stylesheet" href="/style.css">
-  <script defer src="/payment.js"></script>
+  <script defer src="/order-cart.js"></script>
+  <script defer src="/payment.js?v=tracking"></script>
 </head>
 <body>
   <main class="page-heading">
     <h1>Payment status</h1>
     <p id="payment-status" role="status">Checking your order…</p>
+    <p id="payment-reference"></p>
+    <p><a id="track-payment-order" href="/track-order">Track your order</a></p>
     <a href="/collection.html">Return to collection</a>
   </main>
 </body>

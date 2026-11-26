@@ -77,6 +77,7 @@
       sessionStorage.setItem('maisonpe-checkout', JSON.stringify({
         key, fingerprint, order: result.order, bag: localStorage.getItem('okopiBag'),
       }))
+      window.maisonpeOrders.save(result.order, localStorage.getItem('okopiBag'))
       location.assign(url.href)
     } catch (error) {
       invalidate()
@@ -134,6 +135,20 @@
       // Standard delivery remains available when no regional options are loaded.
     }
   }
-  loadCatalog()
+  document.addEventListener('maisonpe-cart-settled', event => {
+    bag = event.detail.filter(item => productById(item.id))
+    update()
+  })
+  async function initialize() {
+    await loadCatalog()
+    await window.maisonpeOrders.reconcile()
+  }
+  initialize()
+  window.addEventListener('pageshow', event => {
+    if (event.persisted) window.maisonpeOrders.reconcile()
+  })
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) window.maisonpeOrders.reconcile()
+  })
   loadRegions()
 })()

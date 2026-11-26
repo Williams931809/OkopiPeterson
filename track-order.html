@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta name="robots" content="noindex">
+  <title>Track your order | Maisonpé</title>
+  <link rel="stylesheet" href="/style.css">
+  <script defer src="/order-cart.js"></script>
+  <script defer src="/track-order.js"></script>
+</head>
+<body>
+  <main class="page-heading">
+    <a href="/">Maisonpé</a>
+    <h1>Track your order</h1>
+    <form id="track-form" class="checkout-form">
+      <label>Order reference <input name="reference" required maxlength="36" autocapitalize="none"></label>
+      <label>Checkout email <input name="email" type="email" required maxlength="254" autocomplete="email"></label>
+      <button class="cta">Track order</button>
+    </form>
+    <p id="track-message" role="status"></p>
+    <section id="order-details" hidden>
+      <h2>Order details</h2>
+      <p id="order-payment"></p>
+      <p id="order-fulfillment"></p>
+      <ul id="order-items"></ul>
+      <p id="order-total"></p>
+      <button id="print-order" type="button">Print order summary</button>
+    </section>
+  </main>
+</body>
+</html>

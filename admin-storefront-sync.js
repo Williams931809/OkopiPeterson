@@ -1,4 +1,13 @@
 (async () => {
+  const menuElement = document.querySelector('nav[aria-label="Main navigation"]') ?? document.querySelector('header nav')
+  function addTracking() {
+    if (!menuElement || menuElement.querySelector('a[href="/track-order"]')) return
+    const link = document.createElement('a')
+    link.href = '/track-order'
+    link.textContent = 'Track order'
+    menuElement.append(link)
+  }
+  addTracking()
   try {
     const response = await fetch('/api/store-settings');
     if (!response.ok) return;
@@ -33,6 +42,7 @@
       if (menu && links.length) {
         menu.querySelectorAll('a').forEach(link => link.remove());
         menu.prepend(...links);
+        addTracking();
       }
     }
   } catch {

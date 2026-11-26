@@ -233,11 +233,13 @@ async function startCheckout(request, env) {
     WHERE id = ? AND status = 'pending_payment' AND checkout_state IS NULL RETURNING id
   `).bind(mode, order.id).first()
   if (!claimed) throw new RequestError(409, 'This checkout is already processing.')
+  const callback = new URL('/payments/flutterwave/return', env.WORKER_ORIGIN)
+  callback.searchParams.set('storefront', storefrontOrigin(request.headers.get('Origin')))
   const data = await flutterwave(env, '/payments', {
     amount: (order.total_minor / 100).toFixed(2),
     currency: order.currency,
     tx_ref: order.id,
-    redirect_url: new URL('/payments/flutterwave/return', env.WORKER_ORIGIN).href,
+    redirect_url: callback.href,
     customer: { email, name, phonenumber: phone },
     customizations: { title: 'Maisonpé' },
     configurations: { session_duration: 30, max_retry_attempt: 3 },
@@ -501,6 +503,42 @@ async function metaCampaign(request, env) {
   return Response.json({ ...details, status })
 }
 
+const primaryStorefront = 'https://www.xn--maisonp-hya.com'
+const storefrontOrigin = origin =>
+  origin === 'https://okopipeterson.vercel.app' ? origin : primaryStorefront
+const fulfillmentSteps = ['processing', 'packed', 'shipped', 'delivered']
+
+async function trackOrder(request, db) {
+  const data = await readJson(request)
+  const reference = String(data.reference ?? '').trim().toLowerCase()
+  const email = String(data.email ?? '').trim().toLowerCase()
+  if (!uuid.test(reference) || !email || email.length > 254) throw new RequestError(400, 'Enter your order reference and checkout email.')
+  const order = await db.prepare(`
+    SELECT id, status, payment_mode, currency, total_minor, items_json, created_at,
+           fulfillment_status, carrier, shipment_reference, fulfillment_updated_at
+    FROM orders WHERE id = ? AND customer_email = ?
+  `).bind(reference, email).first()
+  if (!order) throw new RequestError(404, 'No order matches that reference and email.')
+  const { items_json, ...details } = order
+  return Response.json({ order: { ...details, items: JSON.parse(items_json) } })
+}
+
+async function advanceFulfillment(request, db, id) {
+  const data = await readJson(request)
+  const stage = fulfillmentSteps.indexOf(data.status)
+  if (stage < 1) throw new RequestError(400, 'Choose a fulfillment step.')
+  const carrier = stage === 2 ? field(data.carrier, 100) : null
+  const reference = stage === 2 ? field(data.shipment_reference, 150) : null
+  const order = await db.prepare(`
+    UPDATE orders SET fulfillment_status=?, carrier=COALESCE(?,carrier),
+      shipment_reference=COALESCE(?,shipment_reference), fulfillment_updated_at=CURRENT_TIMESTAMP
+    WHERE id=? AND status='paid' AND payment_mode='live' AND fulfillment_status=?
+    RETURNING id, fulfillment_status
+  `).bind(data.status, carrier, reference, id, fulfillmentSteps[stage - 1]).first()
+  if (!order) throw new RequestError(409, 'Only a paid live order can advance to its next fulfillment step.')
+  return Response.json({ order })
+}
+
 async function route(request, env) {
   const { pathname, searchParams } = new URL(request.url)
   const method = request.method
@@ -526,6 +564,7 @@ async function route(request, env) {
     if (!page) throw new RequestError(404, 'Page not found.')
     return Response.json({ title: page.title, body: page.body })
   }
+  if (pathname === '/api/track-order' && method === 'POST') return trackOrder(request, env.DB)
   if (pathname === '/api/orders' && method === 'POST') {
     if (!paymentsReady(env)) throw new RequestError(503, 'Online checkout is unavailable.')
     return startCheckout(request, env)
@@ -540,7 +579,7 @@ async function route(request, env) {
         console.error(JSON.stringify({ event: 'flutterwave_return_verification_pending' }))
       }
     }
-    const target = new URL('/payment.html', env.STOREFRONT_ORIGIN)
+    const target = new URL('/payment.html', storefrontOrigin(searchParams.get('storefront')))
     if (uuid.test(reference)) target.searchParams.set('order', reference)
     return new Response(null, { status: 303, headers: { Location: target.href } })
   }
@@ -646,7 +685,7 @@ async function route(request, env) {
       }
       const { results } = await env.DB.prepare(`
         SELECT id, customer_email, customer_name, customer_phone, shipping_address, payment_mode, currency, total_minor, items_json, status,
-               payment_reference, created_at
+               payment_reference, created_at, fulfillment_status, carrier, shipment_reference
         FROM orders ORDER BY created_at DESC, id DESC LIMIT 51 OFFSET ?
       `).bind((page - 1) * 50).all()
       return Response.json({
@@ -655,6 +694,10 @@ async function route(request, env) {
         page,
         has_more: results.length > 50,
       })
+    }
+    const fulfillment = /^\/api\/admin\/orders\/([^/]+)\/fulfillment$/.exec(pathname)
+    if (fulfillment && uuid.test(fulfillment[1]) && method === 'POST') {
+      return advanceFulfillment(request, env.DB, fulfillment[1])
     }
     const cancellation = /^\/api\/admin\/orders\/([^/]+)\/cancel$/.exec(pathname)
     if (cancellation && uuid.test(cancellation[1]) && method === 'POST') {
