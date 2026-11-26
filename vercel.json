@@ -28,6 +28,18 @@
     {
       "source": "/api/admin/:path*",
       "destination": "https://maisonpe-api.thankgododiawa6.workers.dev/api/admin/:path*"
+    },
+    {
+      "source": "/api/pages",
+      "destination": "https://maisonpe-api.thankgododiawa6.workers.dev/api/pages"
+    },
+    {
+      "source": "/api/checkout-quote",
+      "destination": "https://maisonpe-api.thankgododiawa6.workers.dev/api/checkout-quote"
+    },
+    {
+      "source": "/pages/:slug",
+      "destination": "/custom-page.html"
     }
   ]
 }

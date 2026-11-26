@@ -51,10 +51,14 @@ async function requireAdmin(request, env) {
     throw new RequestError(503, 'Admin access is not configured.')
   }
   const candidate = /^Bearer (\S+)$/i.exec(request.headers.get('Authorization') ?? '')?.[1]
-  if (!candidate || candidate.length > 512 ||
-      !crypto.subtle.timingSafeEqual(await digest(candidate), await digest(env.ADMIN_API_TOKEN))) {
-    throw new RequestError(401, 'Admin authorization is required.')
-  }
+  if (!candidate || candidate.length > 512) throw new RequestError(401, 'Admin authorization is required.')
+  const hash = await digest(candidate)
+  if (crypto.subtle.timingSafeEqual(hash, await digest(env.ADMIN_API_TOKEN))) return 'owner'
+  const staff = await env.DB.prepare('SELECT role FROM staff_access WHERE token_hash = ?')
+    .bind(hex(hash)).first()
+  if (!staff) throw new RequestError(401, 'Admin authorization is required.')
+  return staff.role
+
 }
 
 function field(value, max, required = true) {
@@ -92,9 +96,9 @@ async function saveProduct(request, db, id) {
   `).bind(id, name, category, description, imageUrl, videoUrl, data.price_minor, Number(data.active), videoUrl).first()
 }
 
-async function createOrder(request, db) {
+async function createOrder(request, db, quote = false) {
   const key = request.headers.get('Idempotency-Key')?.toLowerCase()
-  if (!key || !uuid.test(key)) throw new RequestError(400, 'Provide a UUID v4 Idempotency-Key.')
+  if (!quote && (!key || !uuid.test(key))) throw new RequestError(400, 'Provide a UUID v4 Idempotency-Key.')
   const data = await readJson(request)
   const email = typeof data.email === 'string' ? data.email.trim().toLowerCase() : ''
   if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -119,30 +123,70 @@ async function createOrder(request, db) {
     items.set(lineKey, { id: item.id, size: item.size, quantity })
   }
   const lines = JSON.stringify([...items.keys()].sort().map(key => items.get(key)))
-  const hash = hex(await digest(JSON.stringify([email, name, phone, address, lines])))
+  const code = String(data.discount_code ?? '').trim().toUpperCase()
+  if (code && !/^[A-Z0-9_-]{1,40}$/.test(code)) throw new RequestError(400, 'Invalid discount code.')
+  const region = field(data.region ?? '', 80, false)
+  const hash = hex(await digest(JSON.stringify([email, name, phone, address, lines, code, region])))
   const receipt = 'id, currency, total_minor, status, created_at, checkout_state, checkout_url, payment_mode'
-  const order = await db.prepare(`
+  if (!quote) {
+    const previous = await db.prepare(`SELECT ${receipt}, request_hash FROM orders WHERE idempotency_key = ?`).bind(key).first()
+    if (previous) {
+      if (previous.request_hash !== hash) throw new RequestError(409, 'Order key already used.')
+      return { order: previous, email, name, phone }
+    }
+  }
+  const { results: config } = await db.prepare("SELECT name, value FROM admin_settings WHERE name IN ('settings','discounts','shipping')").all()
+  const settings = Object.fromEntries(config.map(row => [row.name, JSON.parse(row.value)]))
+  const zones = Array.isArray(settings.shipping) ? settings.shipping : []
+  const zone = zones.find(item => item.region === region)
+  if ((region || zones.length) && !zone) throw new RequestError(400, 'Choose an available shipping region.')
+  const delivery = Number(zone?.rate ?? settings.settings?.shipping ?? 0)
+  const shipping = Math.round(delivery * 100)
+  if (!Number.isFinite(delivery) || shipping < 0 || shipping > 100000000) {
+    throw new RequestError(503, 'Shipping pricing is unavailable.')
+  }
+  const offer = code && (settings.discounts ?? []).find(item =>
+    String(item.code ?? '').trim().toUpperCase() === code && String(item.status).trim().toLowerCase() === 'active')
+  const percent = code ? Number(offer?.percent) : 0
+  if (code && (!offer || !Number.isInteger(percent) || percent < 1 || percent > 99)) {
+    throw new RequestError(400, 'This discount code is unavailable.')
+  }
+  const pricedCart = `
     WITH cart AS (
-      SELECT json_extract(value, '$.id') AS id,
-             json_extract(value, '$.size') AS size,
-             json_extract(value, '$.quantity') AS quantity
-      FROM json_each(?)
+      SELECT json_extract(value, '$.id') AS id, json_extract(value, '$.size') AS size,
+             json_extract(value, '$.quantity') AS quantity FROM json_each(?)
+    ), pricing AS (
+      SELECT SUM(p.price_minor * c.quantity) AS subtotal,
+        json_group_array(json_object('id', p.id, 'name', p.name, 'size', c.size,
+          'quantity', c.quantity, 'unit_price_minor', p.price_minor)) AS items
+      FROM cart c JOIN products p ON p.id = c.id AND p.active = 1
+      HAVING COUNT(*) = (SELECT COUNT(*) FROM cart)
+    ), quote AS (
+      SELECT subtotal, items, ? AS shipping, CAST((subtotal * ? + 50) / 100 AS INTEGER) AS discount
+      FROM pricing
     )
-    INSERT INTO orders (id, idempotency_key, request_hash, customer_email, customer_name, customer_phone, shipping_address, total_minor, items_json)
-    SELECT ?, ?, ?, ?, ?, ?, ?, SUM(p.price_minor * c.quantity),
-      json_group_array(json_object('id', p.id, 'name', p.name, 'size', c.size,
-        'quantity', c.quantity, 'unit_price_minor', p.price_minor))
-    FROM cart c JOIN products p ON p.id = c.id AND p.active = 1
-    HAVING COUNT(*) = (SELECT COUNT(*) FROM cart)
+  `
+  if (quote) {
+    const pricing = await db.prepare(pricedCart + 'SELECT subtotal,shipping,discount,subtotal+shipping-discount AS total_minor FROM quote')
+      .bind(lines, shipping, percent).first()
+    if (!pricing) throw new RequestError(409, 'One or more products are unavailable.')
+    return Response.json(pricing)
+  }
+  if (!Number.isSafeInteger(data.expected_total_minor)) throw new RequestError(409, 'Review your order total before paying.')
+  const order = await db.prepare(pricedCart + `
+    INSERT INTO orders (id, idempotency_key, request_hash, customer_email, customer_name,
+      customer_phone, shipping_address, total_minor, items_json)
+    SELECT ?, ?, ?, ?, ?, ?, ?, subtotal+shipping-discount, items FROM quote
+    WHERE subtotal+shipping-discount = ?
     ON CONFLICT(idempotency_key) DO NOTHING
     RETURNING ${receipt}
-  `).bind(lines, crypto.randomUUID(), key, hash, email, name, phone, address).first()
+  `).bind(lines, shipping, percent, crypto.randomUUID(), key, hash, email, name, phone, region ? address + ' · ' + region : address, data.expected_total_minor).first()
 
   if (order) return { order, email, name, phone }
   const previous = await db.prepare(`
     SELECT ${receipt}, request_hash FROM orders WHERE idempotency_key = ?
   `).bind(key).first()
-  if (!previous) throw new RequestError(409, 'One or more products are unavailable.')
+  if (!previous) throw new RequestError(409, 'The order price or availability changed. Review your total again.')
   if (previous.request_hash !== hash) throw new RequestError(409, 'Order key already used.')
   const { request_hash: ignored, ...existing } = previous
   return { order: existing, email, name, phone }
@@ -343,6 +387,44 @@ async function saveSetting(request, db, name) {
       (name === 'settings' ? Array.isArray(value) : !Array.isArray(value))) {
     throw new RequestError(400, 'Invalid settings record.')
   }
+  if (name === 'discounts') {
+    const codes = new Set()
+    for (const offer of value) {
+      const code = String(offer?.code ?? '').trim().toUpperCase()
+      const percent = Number(offer?.percent)
+      if (!/^[A-Z0-9_-]{1,40}$/.test(code) || codes.has(code) ||
+          !Number.isInteger(percent) || percent < 1 || percent > 99 ||
+          !['Draft','Active'].includes(offer.status)) throw new RequestError(400, 'Use unique codes and whole-number discounts from 1% to 99%.')
+      codes.add(code)
+    }
+  }
+  if (name === 'shipping') {
+    const regions = new Set()
+    for (const zone of value) {
+      const rate = Number(zone?.rate)
+      if (typeof zone?.region !== 'string' || !zone.region.trim() || zone.region.length > 80 ||
+          zone.region.trim() !== zone.region || regions.has(zone.region) || zone.rate === '' ||
+          !Number.isFinite(rate) || rate < 0 || rate > 1000000) {
+        throw new RequestError(400, 'Use unique shipping regions and a valid fee in naira.')
+      }
+      regions.add(zone.region)
+    }
+  }
+  if (name === 'pages') {
+    const slugs = new Set()
+    for (const page of value) {
+      if (!productId.test(page?.slug ?? '') || slugs.has(page.slug) ||
+          typeof page.title !== 'string' || !page.title.trim() ||
+          typeof page.body !== 'string' || !['Draft','Published'].includes(page.status)) {
+        throw new RequestError(400, 'Enter a unique page slug, title, and valid status.')
+      }
+      slugs.add(page.slug)
+    }
+  }
+  if (name === 'settings' && value.shipping !== undefined &&
+      (!Number.isFinite(value.shipping) || value.shipping < 0 || value.shipping > 1000000)) {
+    throw new RequestError(400, 'Enter a valid shipping rate.')
+  }
   const encoded = JSON.stringify(value)
   const query = version === 0
     ? db.prepare('INSERT INTO admin_settings(name,value) VALUES(?,?) ON CONFLICT DO NOTHING RETURNING version').bind(name, encoded)
@@ -350,6 +432,71 @@ async function saveSetting(request, db, name) {
   const saved = await query.first()
   if (!saved) throw new RequestError(409, 'This section changed. Reload before saving.')
   return Response.json(saved)
+}
+
+async function sendCampaign(request, env) {
+  if (!env.MAISONPE_RESEND_KEY || !env.MAISONPE_EMAIL_FROM) {
+    throw new RequestError(503, 'Connect a verified email sender and Resend key in Cloudflare.')
+  }
+  const { subject, message, segment_id, consent, request_id } = await readJson(request)
+  if (consent !== true || !uuid.test(request_id ?? '') || !uuid.test(segment_id ?? '')) {
+    throw new RequestError(400, 'Enter an opted-in Resend segment and confirm the send.')
+  }
+  const body = field(message, 8000).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+  const payload = {
+    from: env.MAISONPE_EMAIL_FROM, segment_id, subject: field(subject, 180), send: true,
+    html: '<div style="white-space:pre-wrap">' + body + '</div><p><a href="{{{RESEND_UNSUBSCRIBE_URL}}}">Unsubscribe</a></p>',
+  }
+  const claimed = await env.DB.prepare('INSERT INTO campaign_sends(id) VALUES(?) ON CONFLICT DO NOTHING RETURNING id')
+    .bind(request_id).first()
+  if (!claimed) throw new RequestError(409, 'This send has already been submitted. Check the provider dashboard.')
+  const response = await fetch('https://api.resend.com/broadcasts', {
+    method: 'POST', signal: AbortSignal.timeout(12000),
+    headers: { Authorization: 'Bearer ' + env.MAISONPE_RESEND_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  if (!response.ok) {
+    if (response.status >= 400 && response.status < 500 && response.status !== 408) {
+      await env.DB.prepare('DELETE FROM campaign_sends WHERE id=?').bind(request_id).run()
+    }
+    throw new RequestError(502, 'The email provider did not accept this campaign. Check your provider dashboard.')
+  }
+  const { id } = await response.json()
+  await env.DB.prepare('UPDATE campaign_sends SET provider_id=? WHERE id=?').bind(id, request_id).run()
+  return Response.json({ id })
+
+}
+
+async function metaCampaign(request, env) {
+  const version = env.MAISONPE_META_API_VERSION
+  const account = env.MAISONPE_META_AD_ACCOUNT?.replace(/^act_/, '')
+  if (!env.MAISONPE_META_TOKEN || !/^v[0-9]+\.0$/.test(version ?? '') || !/^\d+$/.test(account ?? '')) {
+    throw new RequestError(503, 'Connect the Maisonpé Meta ad account in Cloudflare.')
+  }
+  const { id, action, confirmed } = await readJson(request)
+  if (typeof id !== 'string' || !/^\d{5,25}$/.test(id) || !['review','activate','pause'].includes(action)) {
+    throw new RequestError(400, 'Enter a Meta campaign ID.')
+  }
+  const url = 'https://graph.facebook.com/' + version + '/' + id
+  const headers = { Authorization: 'Bearer ' + env.MAISONPE_META_TOKEN }
+  const response = await fetch(url + '?fields=id,name,account_id,status,effective_status,daily_budget,lifetime_budget', {
+    headers, signal: AbortSignal.timeout(10000),
+  })
+  if (!response.ok) throw new RequestError(502, 'Meta could not load this campaign.')
+  const campaign = await response.json()
+  if (String(campaign.account_id) !== account) throw new RequestError(403, 'Campaign is outside the configured ad account.')
+  const details = {
+    id, name: campaign.name, status: campaign.status, effective_status: campaign.effective_status,
+    daily_budget: campaign.daily_budget, lifetime_budget: campaign.lifetime_budget,
+  }
+  if (action === 'review') return Response.json(details)
+  if (action === 'activate' && confirmed !== true) throw new RequestError(400, 'Review the campaign and confirm activation.')
+  const status = action === 'activate' ? 'ACTIVE' : 'PAUSED'
+  const update = await fetch(url, {
+    method: 'POST', headers, body: new URLSearchParams({ status }), signal: AbortSignal.timeout(10000),
+  })
+  if (!update.ok || !(await update.json()).success) throw new RequestError(502, 'Meta did not update the campaign.')
+  return Response.json({ ...details, status })
 }
 
 async function route(request, env) {
@@ -366,6 +513,16 @@ async function route(request, env) {
       FROM products WHERE active = 1 ORDER BY name, id
     `).all()
     return Response.json({ currency: 'NGN', products: results, checkout_enabled: paymentsReady(env), payment_mode: paymentMode(env) })
+  }
+  if (pathname === '/api/checkout-quote' && method === 'POST') {
+    return createOrder(request, env.DB, true)
+  }
+  if (pathname === '/api/pages' && method === 'GET') {
+    const slug = searchParams.get('slug') ?? ''
+    const row = await env.DB.prepare("SELECT value FROM admin_settings WHERE name='pages'").first()
+    const page = JSON.parse(row?.value ?? '[]').find(item => item.slug === slug && item.status === 'Published')
+    if (!page) throw new RequestError(404, 'Page not found.')
+    return Response.json({ title: page.title, body: page.body })
   }
   if (pathname === '/api/orders' && method === 'POST') {
     if (!paymentsReady(env)) throw new RequestError(503, 'Online checkout is unavailable.')
@@ -400,17 +557,55 @@ async function route(request, env) {
     return serveMedia(request, env, id)
   }
   if (pathname === '/api/store-settings' && method === 'GET') {
-    const { results } = await env.DB.prepare("SELECT name,value FROM admin_settings WHERE name IN ('settings','navigation')").all()
+    const { results } = await env.DB.prepare("SELECT name,value FROM admin_settings WHERE name IN ('settings','navigation','shipping')").all()
     const config = Object.fromEntries(results.map(row => [row.name, JSON.parse(row.value)]))
     const allowed = ['brand', 'tagline', 'announcement', 'heroTitle', 'heroImage', 'accent']
     const settings = Object.fromEntries(allowed.filter(key => typeof config.settings?.[key] === 'string')
       .map(key => [key, config.settings[key]]))
-    return Response.json({ settings, navigation: config.navigation })
+    const shipping_regions = Array.isArray(config.shipping)
+      ? config.shipping.map(zone => zone?.region).filter(region => typeof region === 'string') : []
+    return Response.json({ settings, navigation: config.navigation, shipping_regions })
 
   }
   if (pathname === '/api/admin/media' && method === 'OPTIONS') return new Response(null, { status: 204 })
   if (pathname.startsWith('/api/admin/')) {
-    await requireAdmin(request, env)
+    const role = await requireAdmin(request, env)
+    if (pathname === '/api/admin/session' && method === 'GET') return Response.json({ role })
+    const ownerOnly = pathname.startsWith('/api/admin/staff') || pathname === '/api/admin/email-send' || pathname === '/api/admin/meta-campaign'
+    if ((ownerOnly && role !== 'owner') || (role === 'viewer' && method !== 'GET')) {
+      throw new RequestError(403, 'Your staff role cannot perform this action.')
+    }
+    if (pathname === '/api/admin/staff' && method === 'GET') {
+      const { results } = await env.DB.prepare('SELECT id,name,email,role FROM staff_access ORDER BY name').all()
+      return Response.json({ staff: results })
+    }
+    if (pathname === '/api/admin/staff' && method === 'POST') {
+      const data = await readJson(request)
+      const name = field(data.name, 120)
+      const email = field(data.email, 254).toLowerCase()
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !['viewer', 'manager'].includes(data.role)) {
+        throw new RequestError(400, 'Enter a valid staff email and role.')
+      }
+      const credential = hex(crypto.getRandomValues(new Uint8Array(32)).buffer)
+      const inserted = await env.DB.prepare(`
+        INSERT INTO staff_access (id,name,email,role,token_hash) VALUES (?,?,?,?,?)
+        ON CONFLICT(email) DO NOTHING RETURNING id
+      `).bind(crypto.randomUUID(), name, email, data.role, hex(await digest(credential))).first()
+      if (!inserted) throw new RequestError(409, 'Revoke the existing staff access before issuing a new token.')
+      return Response.json({ token: credential }, { status: 201 })
+    }
+    const staffId = pathname.slice('/api/admin/staff/'.length)
+    if (pathname.startsWith('/api/admin/staff/') && method === 'DELETE' && uuid.test(staffId)) {
+      await env.DB.prepare('DELETE FROM staff_access WHERE id=?').bind(staffId).run()
+      return new Response(null, { status: 204 })
+    }
+    if (pathname === '/api/admin/automation-runs' && method === 'GET') {
+      const { results } = await env.DB.prepare('SELECT name,at FROM automation_activity ORDER BY id DESC LIMIT 100').all()
+      return Response.json({ runs: results })
+    }
+    if (pathname === '/api/admin/email-send' && method === 'POST') return sendCampaign(request, env)
+    if (pathname === '/api/admin/meta-campaign' && method === 'POST') return metaCampaign(request, env)
+
     if (pathname === '/api/admin/media' && method === 'POST') return uploadMedia(request, env)
     if (pathname === '/api/admin/media' && method === 'GET') {
       const listing = await env.MEDIA.list({ limit: 40, cursor: searchParams.get('cursor') ?? undefined })
