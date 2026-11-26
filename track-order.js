@@ -65,6 +65,9 @@ function renderOrder(order) {
   document.querySelector('#order-total').textContent = 'Order total ' + money(order.total_minor, order.currency)
 }
 
+const supportLink = document.querySelector('.tracking-support')
+const supportAddress = 'mailto:support@maisonpe.com?subject='
+const supportSubject = 'Maisonpé order support'
 const copyReference = document.querySelector('#copy-order-reference')
 const copyStatus = document.querySelector('#copy-order-status')
 let trackedReference = ''
@@ -110,6 +113,7 @@ form.addEventListener('submit', async event => {
   const request = ++lookup
   const button = form.querySelector('button')
   details.hidden = true
+  supportLink.href = supportAddress + encodeURIComponent(supportSubject)
   copyReference.hidden = true
   copyStatus.textContent = ''
   recommendations.hidden = true
@@ -127,6 +131,7 @@ form.addEventListener('submit', async event => {
     renderOrder(order)
     details.hidden = false
     trackedReference = order.id
+    supportLink.href = supportAddress + encodeURIComponent(supportSubject + ' · ' + trackedReference)
     copyReference.hidden = false
     message.textContent = ''
     title.focus()

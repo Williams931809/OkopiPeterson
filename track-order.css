@@ -120,3 +120,14 @@ body.tracking-page {
 @media print {
   .tracking-help { display: none; }
 }
+.tracking-support {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: .65rem 1rem;
+  border-radius: .45rem;
+  background: #8a632c;
+  color: #fff;
+  font-weight: 600;
+}
+.tracking-support-email { margin: .45rem 0 1rem; }
