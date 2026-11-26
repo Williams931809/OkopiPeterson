@@ -90,7 +90,8 @@
       const response = await fetch('/api/products')
       if (!response.ok) return
       const result = await response.json()
-      if (!Array.isArray(result.products) || !result.products.length) return
+      if (!Array.isArray(result.products)) return
+      window.maisonpeManagedCatalog = true
       products.splice(0, products.length, ...result.products.map(item => ({
         id: item.id,
         name: item.name,
@@ -99,8 +100,9 @@
         img: item.image_url,
         video: item.video_url,
         price: item.price_minor / 100,
+        demo: Boolean(item.demo),
       })))
-      bag = bag.filter(item => productById(item.id))
+      bag = bag.filter(item => { const product = productById(item.id); return product && !product.demo })
       enabled = result.checkout_enabled === true
       availability.textContent = enabled
         ? result.payment_mode === 'test' ? 'Test checkout. Use Flutterwave test payment details.' : ''

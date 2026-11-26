@@ -74,6 +74,8 @@ async function saveProduct(request, db, id) {
   const category = field(data.category, 80)
   const description = field(data.description ?? '', 4000, false)
   const imageUrl = field(data.image_url ?? '', 1000, false)
+  if (data.demo !== undefined && typeof data.demo !== 'boolean') throw new RequestError(400, 'Invalid demo status.')
+  const demo = data.demo === undefined ? null : Number(data.demo)
   const videoUrl = data.video_url === undefined ? null : field(data.video_url, 1000, false)
   if (videoUrl && (!URL.canParse(videoUrl) || new URL(videoUrl).protocol !== 'https:')) {
     throw new RequestError(400, 'Video URLs must use HTTPS.')
@@ -87,13 +89,13 @@ async function saveProduct(request, db, id) {
     throw new RequestError(400, 'Provide a valid price in kobo and an active flag.')
   }
   return db.prepare(`
-    INSERT INTO products (id, name, category, description, image_url, video_url, price_minor, active)
-    VALUES (?, ?, ?, ?, ?, COALESCE(?, ''), ?, ?)
+    INSERT INTO products (id, name, category, description, image_url, video_url, price_minor, active, demo)
+    VALUES (?, ?, ?, ?, ?, COALESCE(?, ''), ?, ?, COALESCE(?, 0))
     ON CONFLICT(id) DO UPDATE SET name=excluded.name, category=excluded.category,
       description=excluded.description, image_url=excluded.image_url,
-      video_url=COALESCE(?, products.video_url), price_minor=excluded.price_minor, active=excluded.active, updated_at=CURRENT_TIMESTAMP
+      video_url=COALESCE(?, products.video_url), price_minor=excluded.price_minor, active=excluded.active, demo=COALESCE(?, products.demo), updated_at=CURRENT_TIMESTAMP
     RETURNING *
-  `).bind(id, name, category, description, imageUrl, videoUrl, data.price_minor, Number(data.active), videoUrl).first()
+  `).bind(id, name, category, description, imageUrl, videoUrl, data.price_minor, Number(data.active), demo, videoUrl, demo).first()
 }
 
 async function createOrder(request, db, quote = false) {
@@ -159,7 +161,7 @@ async function createOrder(request, db, quote = false) {
       SELECT SUM(p.price_minor * c.quantity) AS subtotal,
         json_group_array(json_object('id', p.id, 'name', p.name, 'size', c.size,
           'quantity', c.quantity, 'unit_price_minor', p.price_minor)) AS items
-      FROM cart c JOIN products p ON p.id = c.id AND p.active = 1
+      FROM cart c JOIN products p ON p.id = c.id AND p.active = 1 AND p.demo = 0
       HAVING COUNT(*) = (SELECT COUNT(*) FROM cart)
     ), quote AS (
       SELECT subtotal, items, ? AS shipping, CAST((subtotal * ? + 50) / 100 AS INTEGER) AS discount
@@ -509,10 +511,10 @@ async function route(request, env) {
   }
   if (pathname === '/api/products' && method === 'GET') {
     const { results } = await env.DB.prepare(`
-      SELECT id, name, category, description, image_url, video_url, price_minor
+      SELECT id, name, category, description, image_url, video_url, price_minor, demo
       FROM products WHERE active = 1 ORDER BY name, id
     `).all()
-    return Response.json({ currency: 'NGN', products: results, checkout_enabled: paymentsReady(env), payment_mode: paymentMode(env) })
+    return Response.json({ currency: 'NGN', products: results, checkout_enabled: paymentsReady(env) && results.some(product => product.demo === 0), payment_mode: paymentMode(env) })
   }
   if (pathname === '/api/checkout-quote' && method === 'POST') {
     return createOrder(request, env.DB, true)
@@ -629,6 +631,11 @@ async function route(request, env) {
       return Response.json({ products: results })
     }
     const id = pathname.slice('/api/admin/products/'.length)
+    if (pathname.startsWith('/api/admin/products/') && productId.test(id) && method === 'DELETE') {
+      const product = await env.DB.prepare('DELETE FROM products WHERE id=? RETURNING id').bind(id).first()
+      if (!product) throw new RequestError(404, 'Product not found.')
+      return new Response(null, { status: 204 })
+    }
     if (pathname.startsWith('/api/admin/products/') && productId.test(id) && method === 'PUT') {
       return Response.json({ product: await saveProduct(request, env.DB, id) })
     }
