@@ -9,10 +9,13 @@
   } catch {}
   const config = window.maisonpeFilms
   let films = config.defaults
+  document.body.classList.add('film-intro-pending')
   try {
     const response = await fetch('/api/pages?slug=' + config.slug, { signal: AbortSignal.timeout(2500) })
     if (response.ok) films = config.parse((await response.json()).body)
-  } catch {}
+  } catch {} finally {
+    document.body.classList.remove('film-intro-pending')
+  }
   if (!films.length) return
 
   const slides = films.map(film => {

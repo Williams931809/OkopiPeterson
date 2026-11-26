@@ -28,18 +28,25 @@
   const form = dialog.querySelector('form')
   const message = form.querySelector('[role="status"]')
   const submit = form.querySelector('[type="submit"]')
+  form.addEventListener('invalid', event => {
+    message.textContent = event.target.name === 'consent'
+      ? 'Please tick the box to agree to receive the newsletter.'
+      : 'Please enter a valid email address.'
+  }, true)
+  form.addEventListener('input', () => { message.textContent = '' })
   form.onsubmit = async event => {
     event.preventDefault()
     submit.disabled = true
-    message.textContent = ''
+    message.textContent = 'Subscribing…'
     try {
       const response = await fetch('/api/newsletter', {
         method: 'POST',
+        signal: AbortSignal.timeout(10000),
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: form.elements.email.value, consent: form.elements.consent.checked }),
       })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.error || 'Could not subscribe. Please try again.')
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok || result.subscribed !== true) throw new Error(result.error || 'Could not subscribe. Please try again.')
       remember(localStorage, 'maisonpe-newsletter-subscribed')
       form.reset()
       dialog.querySelector('h2').textContent = 'You’re subscribed'
@@ -47,13 +54,15 @@
       form.hidden = true
       dialog.querySelector('.newsletter-close').focus()
     } catch (error) {
-      message.textContent = error.message
+      message.textContent = error.name === 'TimeoutError' || error instanceof TypeError
+        ? 'Could not subscribe. Please try again.' : error.message
       submit.disabled = false
     }
   }
 
   function show() {
-    if (document.hidden || document.querySelector('dialog[open]')) {
+    if (document.hidden || document.querySelector('dialog[open]') ||
+        document.body.matches('.film-intro-pending, .film-intro-active')) {
       setTimeout(show, 1500)
       return
     }
