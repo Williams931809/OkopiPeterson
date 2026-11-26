@@ -71,6 +71,7 @@
         category: item.category,
         description: item.description,
         img: item.image_url,
+        video: item.video_url,
         price: item.price_minor / 100,
       })))
       bag = bag.filter(item => productById(item.id))

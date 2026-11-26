@@ -1,1 +1,41 @@
-(()=>{let state;try{state=JSON.parse(localStorage.getItem('opAdminState')||'null')}catch{}if(!state)return;const s=state.settings||{};if(s.brand){document.querySelectorAll('.brand,footer strong').forEach(el=>el.textContent=s.brand)}if(s.tagline){const footer=document.querySelector('footer p');if(footer)footer.textContent=s.tagline}if(s.heroTitle){const h=document.querySelector('.heroText h1');if(h)h.textContent=s.heroTitle}if(s.heroImage&&/^https:\/\//.test(s.heroImage)){const img=document.querySelector('.hero img');if(img)img.src=s.heroImage}if(s.announcement){const promo=document.querySelector('.op-promo');if(promo)promo.textContent=s.announcement}if(Array.isArray(state.products)){const overrides=new Map(state.products.map(p=>[String(p.id),p]));products.forEach(p=>{const o=overrides.get(String(p.id));if(o){p.name=o.name||p.name;p.category=o.category||p.category;p.price=Number(o.price)||p.price;if(o.image&&/^https:\/\//.test(o.image))p.img=o.image;p.description=o.description||p.description}});state.products.filter(p=>String(p.id).startsWith('custom-')).forEach(o=>{if(o.status==='Active'&&!products.some(p=>String(p.id)===String(o.id))){products.push({id:o.id,name:o.name,category:o.category,price:Number(o.price)||0,img:o.image||'https://placehold.co/900x1100/f1eee8/25211e?text=OKOPI+PETERSON',description:o.description||''})}});if(typeof render==='function')render()}window.addEventListener('storage',e=>{if(e.key==='opAdminState')location.reload()})})();
+(async () => {
+  try {
+    const response = await fetch('/api/store-settings');
+    if (!response.ok) return;
+    const { settings, navigation } = await response.json();
+    const text = (selector, value) => {
+      if (typeof value === 'string' && value.trim()) {
+        document.querySelectorAll(selector).forEach(element => { element.textContent = value; });
+      }
+    };
+    if (settings) {
+      text('.brand, footer strong', settings.brand);
+      text('footer p', settings.tagline);
+      text('.heroText h1', settings.heroTitle);
+      text('.op-promo', settings.announcement);
+      const hero = document.querySelector('.hero img');
+      if (hero && /^https:\/\//i.test(settings.heroImage ?? '')) hero.src = settings.heroImage;
+      if (/^#[0-9a-f]{6}$/i.test(settings.accent ?? '')) {
+        document.documentElement.style.setProperty('--accent', settings.accent);
+      }
+    }
+    if (Array.isArray(navigation) && navigation.length) {
+      const menu = document.querySelector('nav[aria-label="Main navigation"]');
+      const links = navigation.flatMap(item => {
+        if (typeof item?.label !== 'string' || typeof item.url !== 'string') return [];
+        const url = new URL(item.url, location.href);
+        if (url.protocol !== 'https:' && url.origin !== location.origin) return [];
+        const link = document.createElement('a');
+        link.href = url.href;
+        link.textContent = item.label;
+        return [link];
+      });
+      if (menu && links.length) {
+        menu.querySelectorAll('a').forEach(link => link.remove());
+        menu.prepend(...links);
+      }
+    }
+  } catch {
+    // Keep the storefront defaults if the configuration service is unavailable.
+  }
+})();

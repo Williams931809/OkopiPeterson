@@ -14,6 +14,10 @@
       "destination": "https://maisonpe-api.thankgododiawa6.workers.dev/api/products"
     },
     {
+      "source": "/api/store-settings",
+      "destination": "https://maisonpe-api.thankgododiawa6.workers.dev/api/store-settings"
+    },
+    {
       "source": "/api/orders/:id",
       "destination": "https://maisonpe-api.thankgododiawa6.workers.dev/api/orders/:id"
     },

@@ -70,6 +70,10 @@ async function saveProduct(request, db, id) {
   const category = field(data.category, 80)
   const description = field(data.description ?? '', 4000, false)
   const imageUrl = field(data.image_url ?? '', 1000, false)
+  const videoUrl = data.video_url === undefined ? null : field(data.video_url, 1000, false)
+  if (videoUrl && (!URL.canParse(videoUrl) || new URL(videoUrl).protocol !== 'https:')) {
+    throw new RequestError(400, 'Video URLs must use HTTPS.')
+  }
   if (imageUrl && !URL.canParse(imageUrl)) throw new RequestError(400, 'Invalid image URL.')
   if (imageUrl && new URL(imageUrl).protocol !== 'https:') {
     throw new RequestError(400, 'Image URLs must use HTTPS.')
@@ -79,13 +83,13 @@ async function saveProduct(request, db, id) {
     throw new RequestError(400, 'Provide a valid price in kobo and an active flag.')
   }
   return db.prepare(`
-    INSERT INTO products (id, name, category, description, image_url, price_minor, active)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO products (id, name, category, description, image_url, video_url, price_minor, active)
+    VALUES (?, ?, ?, ?, ?, COALESCE(?, ''), ?, ?)
     ON CONFLICT(id) DO UPDATE SET name=excluded.name, category=excluded.category,
       description=excluded.description, image_url=excluded.image_url,
-      price_minor=excluded.price_minor, active=excluded.active, updated_at=CURRENT_TIMESTAMP
+      video_url=COALESCE(?, products.video_url), price_minor=excluded.price_minor, active=excluded.active, updated_at=CURRENT_TIMESTAMP
     RETURNING *
-  `).bind(id, name, category, description, imageUrl, data.price_minor, Number(data.active)).first()
+  `).bind(id, name, category, description, imageUrl, videoUrl, data.price_minor, Number(data.active), videoUrl).first()
 }
 
 async function createOrder(request, db) {
@@ -255,6 +259,99 @@ async function receiveWebhook(request, env) {
   return new Response(null, { status: 200 })
 }
 
+const mediaTypes = new Map([
+  ['image/jpeg', 'jpg'], ['image/png', 'png'], ['image/webp', 'webp'],
+  ['image/avif', 'avif'], ['video/mp4', 'mp4'], ['video/webm', 'webm'],
+])
+const mediaKey = /^[0-9a-f-]{36}\.(jpg|png|webp|avif|mp4|webm)$/
+const settingsKeys = new Set([
+  'settings', 'pages', 'discounts', 'campaigns', 'navigation', 'email', 'forms',
+  'seo', 'shipping', 'returns', 'automation', 'staff', 'activity',
+])
+
+function validMediaHeader(bytes, type) {
+  const ascii = (offset, count) => String.fromCharCode(...bytes.slice(offset, offset + count))
+  switch (type) {
+    case 'image/jpeg': return bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255
+    case 'image/png': return bytes[0] === 137 && ascii(1, 7) === 'PNG\r\n\x1a\n'
+    case 'image/webp': return ascii(0, 4) === 'RIFF' && ascii(8, 4) === 'WEBP'
+    case 'image/avif': return ascii(4, 4) === 'ftyp' && ['avif', 'avis'].includes(ascii(8, 4))
+    case 'video/mp4': return ascii(4, 4) === 'ftyp'
+    case 'video/webm': return bytes[0] === 26 && bytes[1] === 69 && bytes[2] === 223 && bytes[3] === 163
+    default: return false
+  }
+}
+
+async function uploadMedia(request, env) {
+  const type = request.headers.get('Content-Type')
+  const extension = mediaTypes.get(type)
+  if (!extension) throw new RequestError(415, 'Choose a JPEG, PNG, WebP, AVIF, MP4 or WebM file.')
+  const length = Number(request.headers.get('Content-Length'))
+  const max = type.startsWith('video/') ? 50 * 1024 ** 2 : 10 * 1024 ** 2
+  if (!request.body || !Number.isSafeInteger(length) || length < 12 || length > max) {
+    throw new RequestError(413, 'Images can be up to 10 MB and videos up to 50 MB.')
+  }
+  const reader = request.body.getReader()
+  const initial = []
+  let size = 0
+  while (size < 12) {
+    const { done, value } = await reader.read()
+    if (done) break
+    initial.push(value)
+    size += value.byteLength
+  }
+  const header = Uint8Array.from(initial.flatMap(chunk => Array.from(chunk.subarray(0, 12))).slice(0, 12))
+  if (!validMediaHeader(header, type)) {
+    await reader.cancel()
+    throw new RequestError(415, 'The file contents do not match the selected media type.')
+  }
+  const stream = new FixedLengthStream(length)
+  const source = new ReadableStream({
+    async pull(controller) {
+      if (initial.length) return controller.enqueue(initial.shift())
+      const { done, value } = await reader.read()
+      if (done) controller.close()
+      else controller.enqueue(value)
+    },
+    cancel: reason => reader.cancel(reason),
+  })
+  const id = crypto.randomUUID() + '.' + extension
+  const object = { httpMetadata: { contentType: type } }
+  await Promise.all([source.pipeTo(stream.writable), env.MEDIA.put(id, stream.readable, object)])
+  return Response.json({ url: new URL('/media/' + id, env.WORKER_ORIGIN).href, type }, { status: 201 })
+}
+
+async function serveMedia(request, env, id) {
+  const object = request.method === 'HEAD'
+    ? await env.MEDIA.head(id)
+    : await env.MEDIA.get(id, { range: request.headers })
+  if (!object) throw new RequestError(404, 'Media not found.')
+  const headers = new Headers({ 'Accept-Ranges': 'bytes', ETag: object.httpEtag })
+  object.writeHttpMetadata(headers)
+  headers.set('Content-Length', String(object.range?.length ?? object.size))
+  const partial = Boolean(request.headers.has('Range') && object.range?.length)
+  if (partial) {
+    const start = object.range.offset ?? object.size - object.range.length
+    headers.set('Content-Range', 'bytes ' + start + '-' + (start + object.range.length - 1) + '/' + object.size)
+  }
+  return new Response(object.body ?? null, { status: partial ? 206 : 200, headers })
+}
+
+async function saveSetting(request, db, name) {
+  const { value, version } = await readJson(request)
+  if (!Number.isInteger(version) || version < 0 || !value || typeof value !== 'object' ||
+      (name === 'settings' ? Array.isArray(value) : !Array.isArray(value))) {
+    throw new RequestError(400, 'Invalid settings record.')
+  }
+  const encoded = JSON.stringify(value)
+  const query = version === 0
+    ? db.prepare('INSERT INTO admin_settings(name,value) VALUES(?,?) ON CONFLICT DO NOTHING RETURNING version').bind(name, encoded)
+    : db.prepare('UPDATE admin_settings SET value=?,version=version+1 WHERE name=? AND version=? RETURNING version').bind(encoded,name,version)
+  const saved = await query.first()
+  if (!saved) throw new RequestError(409, 'This section changed. Reload before saving.')
+  return Response.json(saved)
+}
+
 async function route(request, env) {
   const { pathname, searchParams } = new URL(request.url)
   const method = request.method
@@ -265,7 +362,7 @@ async function route(request, env) {
   }
   if (pathname === '/api/products' && method === 'GET') {
     const { results } = await env.DB.prepare(`
-      SELECT id, name, category, description, image_url, price_minor
+      SELECT id, name, category, description, image_url, video_url, price_minor
       FROM products WHERE active = 1 ORDER BY name, id
     `).all()
     return Response.json({ currency: 'NGN', products: results, checkout_enabled: paymentsReady(env), payment_mode: paymentMode(env) })
@@ -298,8 +395,40 @@ async function route(request, env) {
     if (!order) throw new RequestError(404, 'Order not found.')
     return Response.json({ order })
   }
+  const id = pathname.slice('/media/'.length)
+  if (pathname.startsWith('/media/') && mediaKey.test(id) && ['GET', 'HEAD'].includes(method)) {
+    return serveMedia(request, env, id)
+  }
+  if (pathname === '/api/store-settings' && method === 'GET') {
+    const { results } = await env.DB.prepare("SELECT name,value FROM admin_settings WHERE name IN ('settings','navigation')").all()
+    const config = Object.fromEntries(results.map(row => [row.name, JSON.parse(row.value)]))
+    const allowed = ['brand', 'tagline', 'announcement', 'heroTitle', 'heroImage', 'accent']
+    const settings = Object.fromEntries(allowed.filter(key => typeof config.settings?.[key] === 'string')
+      .map(key => [key, config.settings[key]]))
+    return Response.json({ settings, navigation: config.navigation })
+
+  }
+  if (pathname === '/api/admin/media' && method === 'OPTIONS') return new Response(null, { status: 204 })
   if (pathname.startsWith('/api/admin/')) {
     await requireAdmin(request, env)
+    if (pathname === '/api/admin/media' && method === 'POST') return uploadMedia(request, env)
+    if (pathname === '/api/admin/media' && method === 'GET') {
+      const listing = await env.MEDIA.list({ limit: 40, cursor: searchParams.get('cursor') ?? undefined })
+      return Response.json({
+        media: listing.objects.filter(object => mediaKey.test(object.key)).map(object => ({
+          url: new URL('/media/' + object.key, env.WORKER_ORIGIN).href,
+          video: /\.(mp4|webm)$/.test(object.key),
+        })), cursor: listing.truncated ? listing.cursor : null,
+      })
+    }
+    if (pathname === '/api/admin/settings' && method === 'GET') {
+      const { results } = await env.DB.prepare('SELECT name,value,version FROM admin_settings').all()
+      return Response.json(Object.fromEntries(results.map(row => [row.name, { value: JSON.parse(row.value), version: row.version }])))
+    }
+    const setting = pathname.slice('/api/admin/settings/'.length)
+    if (pathname.startsWith('/api/admin/settings/') && settingsKeys.has(setting) && method === 'PUT') {
+      return saveSetting(request, env.DB, setting)
+    }
     if (pathname === '/api/admin/products' && method === 'GET') {
       const { results } = await env.DB.prepare('SELECT * FROM products ORDER BY name, id').all()
       return Response.json({ products: results })
@@ -354,6 +483,14 @@ export default {
     }
     response.headers.set('Cache-Control', 'no-store')
     response.headers.set('X-Content-Type-Options', 'nosniff')
+    const origin = request.headers.get('Origin')
+    if (new URL(request.url).pathname === '/api/admin/media' &&
+        ['https://www.xn--maisonp-hya.com', 'https://xn--maisonp-hya.com', 'https://okopipeterson.vercel.app'].includes(origin)) {
+      response.headers.set('Access-Control-Allow-Origin', origin)
+      response.headers.set('Access-Control-Allow-Headers', 'Authorization, Content-Type')
+      response.headers.set('Access-Control-Allow-Methods', 'POST, OPTIONS')
+      response.headers.set('Vary', 'Origin')
+    }
     return response
   },
 }
