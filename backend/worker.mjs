@@ -564,6 +564,15 @@ async function route(request, env) {
     if (!page) throw new RequestError(404, 'Page not found.')
     return Response.json({ title: page.title, body: page.body })
   }
+  if (pathname === '/api/newsletter' && method === 'POST') {
+    const data = await readJson(request)
+    const email = typeof data.email === 'string' ? data.email.trim().toLowerCase() : ''
+    if (data.consent !== true || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw new RequestError(400, 'Enter a valid email address and agree to receive the newsletter.')
+    }
+    await env.DB.prepare('INSERT INTO newsletter_subscribers(email) VALUES(?) ON CONFLICT(email) DO NOTHING').bind(email).run()
+    return Response.json({ subscribed: true })
+  }
   if (pathname === '/api/track-order' && method === 'POST') return trackOrder(request, env.DB)
   if (pathname === '/api/orders' && method === 'POST') {
     if (!paymentsReady(env)) throw new RequestError(503, 'Online checkout is unavailable.')
@@ -611,6 +620,15 @@ async function route(request, env) {
   if (pathname === '/api/admin/media' && method === 'OPTIONS') return new Response(null, { status: 204 })
   if (pathname.startsWith('/api/admin/')) {
     const role = await requireAdmin(request, env)
+    if (pathname === '/api/admin/newsletter' && method === 'GET') {
+      if (role !== 'owner') throw new RequestError(403, 'Owner access is required.')
+      const after = searchParams.get('after') ?? ''
+      const { results } = await env.DB.prepare(
+        'SELECT email, subscribed_at FROM newsletter_subscribers WHERE email > ? ORDER BY email LIMIT 101'
+      ).bind(after).all()
+      const subscribers = results.slice(0, 100)
+      return Response.json({ subscribers, next: results.length > 100 ? subscribers.at(-1).email : null })
+    }
     if (pathname === '/api/admin/session' && method === 'GET') return Response.json({ role })
     const ownerOnly = pathname.startsWith('/api/admin/staff') || pathname === '/api/admin/email-send' || pathname === '/api/admin/meta-campaign'
     if ((ownerOnly && role !== 'owner') || (role === 'viewer' && method !== 'GET')) {

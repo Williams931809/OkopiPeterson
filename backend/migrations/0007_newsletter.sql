@@ -1,0 +1,4 @@
+CREATE TABLE IF NOT EXISTS newsletter_subscribers (
+  email TEXT PRIMARY KEY,
+  subscribed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

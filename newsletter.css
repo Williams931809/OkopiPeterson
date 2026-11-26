@@ -1,0 +1,20 @@
+.maisonpe-newsletter {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  width: min(32rem, calc(100% - 2rem));
+  max-height: calc(100dvh - 2rem);
+  overflow: auto;
+  padding: clamp(1.5rem, 5vw, 3rem);
+  border: 1px solid #c6b599;
+  background: #f8f4ec;
+  color: #241d16;
+}
+.maisonpe-newsletter::backdrop { background: rgb(20 15 10 / 65%); }
+.maisonpe-newsletter h2 { margin: 0 1.75rem .75rem 0; font-size: clamp(1.7rem, 5vw, 2.5rem); }
+.maisonpe-newsletter form { display: grid; gap: .65rem; }
+.maisonpe-newsletter form[hidden] { display: none; }
+.maisonpe-newsletter input[type="email"] { width: 100%; padding: .7rem; border: 1px solid #8c7d68; background: #fff; color: #241d16; }
+.maisonpe-newsletter .newsletter-consent { display: flex; align-items: start; gap: .5rem; font-size: .9rem; }
+.maisonpe-newsletter .newsletter-close { position: absolute; right: .75rem; top: .75rem; padding: .4rem .65rem; color: inherit; background: transparent; border: 0; cursor: pointer; font-size: 1.4rem; }
+.maisonpe-newsletter [role="status"]:empty { display: none; }

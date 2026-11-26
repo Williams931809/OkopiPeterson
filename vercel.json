@@ -48,6 +48,10 @@
     {
       "source": "/api/track-order",
       "destination": "https://maisonpe-api.thankgododiawa6.workers.dev/api/track-order"
+    },
+    {
+      "source": "/api/newsletter",
+      "destination": "https://maisonpe-api.thankgododiawa6.workers.dev/api/newsletter"
     }
   ]
 }

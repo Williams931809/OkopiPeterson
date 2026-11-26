@@ -107,6 +107,27 @@ async function showAutomationRuns(target) {
     if (!runs.length) target.textContent = 'No automation runs yet.';
   } catch(error) { target.textContent = error.message; }
 }
+async function showSubscribers(panel, after = '') {
+  const list = panel.querySelector('ul');
+  const status = panel.querySelector('[role="status"]');
+  const next = panel.querySelector('button');
+  next.hidden = true;
+  try {
+    const data = await cloud.api('newsletter' + (after ? '?after=' + encodeURIComponent(after) : ''));
+    for (const subscriber of data.subscribers) {
+      const row = document.createElement('li');
+      row.textContent = subscriber.email + ' · ' + subscriber.subscribed_at + ' UTC';
+      list.append(row);
+    }
+    status.textContent = list.children.length ? '' : 'No subscribers yet.';
+    if (data.next) {
+      next.hidden = false;
+      next.onclick = () => showSubscribers(panel, data.next);
+    }
+  } catch (error) {
+    status.textContent = error.message;
+  }
+}
 function render(key){const records=get(key);document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.extra===key));const title=sections.find(s=>s[0]===key)[1];if(key==='staff'){staffPanel();return;}
 const intro=key==='email'?'Send saved messages to opted-in recipients after connecting your sender.':key==='automation'?'Active rules log a verified payment automatically.':'Records are shared through Cloudflare.';
 screen.innerHTML='<div class="page-head"><div><h1>'+esc(title)+'</h1><p>'+esc(intro)+'</p></div></div><section class="panel"><h2>'+esc(title)+'</h2><div id="extraRows"></div></section>'+(key==='activity'?'':'<section class="panel"><h2>Create record</h2><form id="extraForm"><div class="form-grid">'+fields[key].map(f=>key==='automation'&&f==='trigger'?'<label class="field">Trigger<select name="trigger"><option value="payment_verified">Payment verified</option></select></label>':key==='automation'&&f==='action'?'<label class="field">Action<select name="action"><option value="activity_log">Write a run log</option></select></label>':key==='automation'&&f==='status'?'<label class="field">Status<select name="status"><option>Draft</option><option>Active</option></select></label>':'<label class="field">'+esc(f)+'<input name="'+esc(f)+'" required maxlength="1000"></label>').join('')+'</div><button class="primary" type="submit">Save record</button></form></section>');
@@ -115,7 +136,16 @@ const section=document.querySelector('#extraRows').parentElement;section.insertB
 document.querySelector('#extraExport').onclick=()=>{const blob=new Blob([JSON.stringify(records,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='okopi-'+key+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 document.querySelector('#extraImport').onchange=async e=>{const file=e.target.files?.[0];if(!file)return;try{const imported=JSON.parse(await file.text());if(!Array.isArray(imported)||imported.length>1000||imported.some(x=>!x||typeof x!=='object'||Array.isArray(x)))throw Error('Expected an array of up to 1000 records');if(!confirm('Replace all '+title+' records?'))return;await saveRecords(key,imported,'Imported '+title+' records');render(key)}catch(err){alert('Import failed: '+err.message)}};
 const rows=document.querySelector('#extraRows');rows.innerHTML=records.length?records.map((item,i)=>'<div class="list-row"><div><strong>'+esc(item.name||item.title)+'</strong><div class="muted">'+esc(item.subject||item.description||item.region||item.at||item.role||'')+'</div></div>'+(key==='activity'?'':'<span><button class="secondary" data-edit="'+i+'">Edit</button> <button class="secondary" data-remove="'+i+'">Delete</button>'+(key==='email'&&cloud.role()==='owner'?'<button class="secondary" data-send-email="'+i+'">Prepare send</button>':'')+'</span>')+'</div>').join(''):'<div class="empty">No records yet.</div>';
-if (key==='email') emailSender(rows,records);
+if (key==='email') {
+  emailSender(rows,records);
+  if (cloud.role()==='owner') {
+    const panel = document.createElement('section');
+    panel.className = 'panel';
+    panel.innerHTML = '<h2>Newsletter subscribers</h2><ul></ul><p role="status">Loading…</p><button class="secondary" hidden>Load more</button>';
+    screen.append(panel);
+    showSubscribers(panel);
+  }
+}
 if (key==='automation') {
   const history = document.createElement('section');
   history.className='panel';
