@@ -1,6 +1,10 @@
 (async () => {
   const title = document.querySelector('#page-title');
   const slug = location.pathname.split('/').filter(Boolean).pop();
+  if (slug === 'homepage-films') {
+    title.textContent = 'Page not found';
+    return;
+  }
   try {
     const response = await fetch('/api/pages?slug=' + encodeURIComponent(slug));
     if (response.status === 404) {

@@ -119,7 +119,83 @@ document.addEventListener('submit', async event => {
     submit.disabled = false;
   }
 });
-function orderTable(list){return table(['Reference','Customer','Amount','Status','Date'],list.map(o=>'<tr><td>'+esc(o.reference)+'</td><td>'+esc(o.customer?.name||'—')+'<details><summary>Order details</summary><p>'+esc(o.customer.email)+'</p><p>'+esc(o.customer.phone)+'</p><p>'+esc(o.address)+'</p><ul>'+o.items.map(item=>'<li>'+esc(item.name)+' · '+esc(item.size)+' × '+esc(item.quantity)+'</li>').join('')+'</ul>'+fulfillmentControls(o)+(o.status==='pending payment'?'<button class="secondary" data-cancel-order="'+esc(o.reference)+'">Cancel order</button>':'')+'</details>'+'</td><td>'+money(o.total)+'</td><td><span class="tag neutral">'+esc(o.status)+(o.test?' · Test':'')+'</span></td><td>'+new Date(o.date).toLocaleDateString()+'</td></tr>'))}function productTable(list){return table(['Product','Category','Price','Status','Manage'],list.map(p=>'<tr><td>'+(p.image?'<img src="'+esc(p.image)+'" alt="">':'')+'<strong>'+esc(p.name)+'</strong></td><td>'+esc(p.category)+'</td><td>'+money(p.price)+'</td><td><span class="tag">'+esc(p.status)+'</span></td><td><button class="secondary" data-editproduct="'+esc(p.id)+'">Edit</button> <button class="secondary" data-deleteproduct="'+esc(p.id)+'">Delete</button></td></tr>'))}function products(){return head('Products','Manage jacket listings and pricing.',button('Add product','newProduct'))+panel('All products <span class="muted">('+state.products.length+')</span>','<div class="toolbar"><input id="productFilter" placeholder="Search products"><select id="categoryFilter"><option value="">All categories</option>'+[...new Set(state.products.map(product=>product.category))].sort().map(x=>'<option>'+esc(x)+'</option>').join('')+'</select><button class="secondary" data-action="export">Export CSV</button></div><div id="productTable">'+productTable(state.products)+'</div>')}function inventory(){return head('Inventory','Catalog availability by product.')+panel('Catalog availability',productTable(state.products))}function customers(){const seen=new Map();orders().forEach(o=>{const email=o.customer?.email;if(email&&!seen.has(email))seen.set(email,o.customer)});return head('Customers','Customer records from Cloudflare orders.')+panel('Customer directory',seen.size?table(['Name','Email','Phone'],[...seen.values()].map(c=>'<tr><td>'+esc(c.name)+'</td><td>'+esc(c.email)+'</td><td>'+esc(c.phone)+'</td></tr>')):'<div class="empty">No customers recorded in this browser yet.</div>')}function analytics(){return head('Analytics','Understand your store performance.')+'<div class="cards">'+[['Orders',orders().length],['Verified sales',money(paidOrders().reduce((s,o)=>s+(o.total||0),0))],['Average order',money(paidOrders().length?paidOrders().reduce((s,o)=>s+(o.total||0),0)/paidOrders().length:0)],['Products',state.products.length]].map(x=>'<div class="card"><label>'+x[0]+'</label><strong>'+x[1]+'</strong></div>').join('')+'</div>'+panel('Reporting', '<p class="muted">Real conversion rates, visitors, ad attribution and revenue reports require production event tracking and a database.</p>')}function listView(key,title,desc,fields){return head(title,desc,button('Create new',key==='discounts'?'newDiscount':key==='campaigns'?'newCampaign':'newPage'))+panel('All '+title.toLowerCase(),state[key].length?table(['Name','Details','Status','Edit'],state[key].map((v,i)=>'<tr><td>'+esc(v.name||v.title)+'</td><td>'+(key==='pages'&&v.status==='Published'?'<a target="_blank" rel="noopener" href="/pages/'+encodeURIComponent(v.slug)+'">'+esc(v.slug)+'</a>':esc(v.code||v.channel||v.slug||'—'))+'</td><td><span class="tag neutral">'+esc(v.status||'Draft')+'</span></td><td><button class="secondary" data-editlist="'+key+':'+i+'">Edit</button></td></tr>')):'<div class="empty">Nothing created yet. Select Create new to begin.</div>')}function branding(){const s=state.settings;return head('Branding & theme','Control your storefront identity and visual content.')+notice+panel('Store identity','<div class="form-grid">'+[['brand','Brand name'],['tagline','Brand tagline'],['announcement','Announcement text'],['heroTitle','Homepage headline'],['accent','Accent color (hex)']].map(([k,l])=>'<label class="field">'+l+'<input data-setting="'+k+'" value="'+esc(s[k])+'"></label>').join('')+uploadField('heroFile','Upload homepage image','image/jpeg,image/png,image/webp,image/avif')+'</div><button class="primary" data-action="saveBrand">Save branding</button>')+panel('Storefront preview','<p class="muted">Open the storefront to confirm published changes.</p><a href="./index.html" target="_blank" class="secondary">↗ Open storefront</a>')}function gallery(){return head('Media gallery','Upload images and videos from your computer.')+
+function orderTable(list){return table(['Reference','Customer','Amount','Status','Date'],list.map(o=>'<tr><td>'+esc(o.reference)+'</td><td>'+esc(o.customer?.name||'—')+'<details><summary>Order details</summary><p>'+esc(o.customer.email)+'</p><p>'+esc(o.customer.phone)+'</p><p>'+esc(o.address)+'</p><ul>'+o.items.map(item=>'<li>'+esc(item.name)+' · '+esc(item.size)+' × '+esc(item.quantity)+'</li>').join('')+'</ul>'+fulfillmentControls(o)+(o.status==='pending payment'?'<button class="secondary" data-cancel-order="'+esc(o.reference)+'">Cancel order</button>':'')+'</details>'+'</td><td>'+money(o.total)+'</td><td><span class="tag neutral">'+esc(o.status)+(o.test?' · Test':'')+'</span></td><td>'+new Date(o.date).toLocaleDateString()+'</td></tr>'))}function productTable(list){return table(['Product','Category','Price','Status','Manage'],list.map(p=>'<tr><td>'+(p.image?'<img src="'+esc(p.image)+'" alt="">':'')+'<strong>'+esc(p.name)+'</strong></td><td>'+esc(p.category)+'</td><td>'+money(p.price)+'</td><td><span class="tag">'+esc(p.status)+'</span></td><td><button class="secondary" data-editproduct="'+esc(p.id)+'">Edit</button> <button class="secondary" data-deleteproduct="'+esc(p.id)+'">Delete</button></td></tr>'))}function products(){return head('Products','Manage jacket listings and pricing.',button('Add product','newProduct'))+panel('All products <span class="muted">('+state.products.length+')</span>','<div class="toolbar"><input id="productFilter" placeholder="Search products"><select id="categoryFilter"><option value="">All categories</option>'+[...new Set(state.products.map(product=>product.category))].sort().map(x=>'<option>'+esc(x)+'</option>').join('')+'</select><button class="secondary" data-action="export">Export CSV</button></div><div id="productTable">'+productTable(state.products)+'</div>')}function inventory(){return head('Inventory','Catalog availability by product.')+panel('Catalog availability',productTable(state.products))}function customers(){const seen=new Map();orders().forEach(o=>{const email=o.customer?.email;if(email&&!seen.has(email))seen.set(email,o.customer)});return head('Customers','Customer records from Cloudflare orders.')+panel('Customer directory',seen.size?table(['Name','Email','Phone'],[...seen.values()].map(c=>'<tr><td>'+esc(c.name)+'</td><td>'+esc(c.email)+'</td><td>'+esc(c.phone)+'</td></tr>')):'<div class="empty">No customers recorded in this browser yet.</div>')}function analytics(){return head('Analytics','Understand your store performance.')+'<div class="cards">'+[['Orders',orders().length],['Verified sales',money(paidOrders().reduce((s,o)=>s+(o.total||0),0))],['Average order',money(paidOrders().length?paidOrders().reduce((s,o)=>s+(o.total||0),0)/paidOrders().length:0)],['Products',state.products.length]].map(x=>'<div class="card"><label>'+x[0]+'</label><strong>'+x[1]+'</strong></div>').join('')+'</div>'+panel('Reporting', '<p class="muted">Real conversion rates, visitors, ad attribution and revenue reports require production event tracking and a database.</p>')}function listView(key,title,desc,fields){return head(title,desc,button('Create new',key==='discounts'?'newDiscount':key==='campaigns'?'newCampaign':'newPage'))+panel('All '+title.toLowerCase(),state[key].length?table(['Name','Details','Status','Edit'],state[key].map((v,i)=>key==='pages'&&v.slug===window.maisonpeFilms.slug?'':'<tr><td>'+esc(v.name||v.title)+'</td><td>'+(key==='pages'&&v.status==='Published'?'<a target="_blank" rel="noopener" href="/pages/'+encodeURIComponent(v.slug)+'">'+esc(v.slug)+'</a>':esc(v.code||v.channel||v.slug||'—'))+'</td><td><span class="tag neutral">'+esc(v.status||'Draft')+'</span></td><td><button class="secondary" data-editlist="'+key+':'+i+'">Edit</button></td></tr>')):'<div class="empty">Nothing created yet. Select Create new to begin.</div>')}function branding(){const s=state.settings;return head('Branding & theme','Control your storefront identity and visual content.')+notice+panel('Store identity','<div class="form-grid">'+[['brand','Brand name'],['tagline','Brand tagline'],['announcement','Announcement text'],['heroTitle','Homepage headline'],['accent','Accent color (hex)']].map(([k,l])=>'<label class="field">'+l+'<input data-setting="'+k+'" value="'+esc(s[k])+'"></label>').join('')+uploadField('heroFile','Upload homepage image','image/jpeg,image/png,image/webp,image/avif')+'</div><button class="primary" data-action="saveBrand">Save branding</button>')+panel('Storefront preview','<p class="muted">Open the storefront to confirm published changes.</p><a href="./index.html" target="_blank" class="secondary">↗ Open storefront</a>')}function homepageFilms() {
+  const config = window.maisonpeFilms;
+  const page = shared.pages?.value?.find(item => item.slug === config.slug);
+  return page ? config.parse(page.body) : config.defaults;
+}
+
+function homepageFilmPanel() {
+  const films = homepageFilms();
+  const canEdit = staffRole !== 'viewer';
+  const rows = films.map((film, index) =>
+    '<form class="list-row" data-home-film="' + index + '">' +
+    '<video controls playsinline preload="none" width="110" src="' + esc(film.url) + '"></video><div>' +
+    (canEdit ? '<label class="field">Film title<input name="title" maxlength="100" required value="' + esc(film.title) + '"></label>' +
+      uploadField('file', 'Replace video (optional)', 'video/mp4,video/webm') +
+      '<button class="secondary" type="submit">Save changes</button> ' +
+      '<button class="secondary" type="button" data-film-action="up"' + (index === 0 ? ' disabled' : '') + '>Move up</button> ' +
+      '<button class="secondary" type="button" data-film-action="down"' + (index === films.length - 1 ? ' disabled' : '') + '>Move down</button> ' +
+      '<button class="secondary" type="button" data-film-action="remove">Remove</button>' : '<strong>' + esc(film.title) + '</strong>') +
+    '</div></form>').join('');
+  const add = canEdit ? '<form data-home-film="new"><label class="field">Film title<input name="title" maxlength="100" required></label>' +
+    '<label class="field">Video file<input name="file" type="file" accept="video/mp4,video/webm" required></label>' +
+    '<button class="primary" type="submit">Add to homepage</button></form>' : '';
+  return panel('Homepage films', '<p>Changes publish to the homepage. MP4 or WebM, up to 50 MB per video.</p>' +
+    (rows || '<p>No films are published.</p>') + add);
+}
+
+let filmSaveInProgress = false;
+async function changeHomepageFilms(form, action) {
+  if (filmSaveInProgress || staffRole === 'viewer') return;
+  filmSaveInProgress = true;
+  const controls = [...form.querySelectorAll('button:not(:disabled)')];
+  controls.forEach(control => { control.disabled = true; });
+  try {
+    const films = structuredClone(homepageFilms());
+    const index = Number(form.dataset.homeFilm);
+    if (action === 'save') {
+      const title = form.elements.title.value.trim();
+      if (!title) throw new Error('Enter a film title.');
+      const file = form.elements.file.files[0];
+      if (form.dataset.homeFilm === 'new' && !file) throw new Error('Choose a video.');
+      if (file && !['video/mp4', 'video/webm'].includes(file.type)) throw new Error('Choose an MP4 or WebM video.');
+      const url = file ? await upload(file) : films[index].url;
+      if (form.dataset.homeFilm === 'new') films.push({ title, url });
+      else films[index] = { title, url };
+    } else if (action === 'remove') {
+      films.splice(index, 1);
+    } else {
+      const destination = index + (action === 'up' ? -1 : 1);
+      if (destination < 0 || destination >= films.length) return;
+      [films[index], films[destination]] = [films[destination], films[index]];
+    }
+    const slug = window.maisonpeFilms.slug;
+    const pages = (shared.pages?.value ?? []).filter(item => item.slug !== slug);
+    pages.push({ slug, title: 'Homepage films', body: JSON.stringify(films), status: 'Published' });
+    await saveShared('pages', pages);
+    state.pages = pages;
+    if (page === 'gallery') render();
+    toast('Homepage films updated');
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    controls.forEach(control => { control.disabled = false; });
+    filmSaveInProgress = false;
+  }
+}
+
+document.addEventListener('submit', event => {
+  if (!event.target.matches('[data-home-film]')) return;
+  event.preventDefault();
+  void changeHomepageFilms(event.target, 'save');
+});
+document.addEventListener('click', event => {
+  const button = event.target.closest('[data-film-action]');
+  if (button) void changeHomepageFilms(button.form, button.dataset.filmAction);
+});
+
+function gallery(){return head('Media gallery','Upload images and videos from your computer.')+homepageFilmPanel()+
 panel('Upload media','<form id="mediaUpload">'+uploadField('media','Choose image or video')+
 '<button class="primary">Upload</button></form><p>Images up to 10 MB. Videos up to 50 MB.</p>')+
 panel('Uploaded media','<div id="mediaGrid">Loading media…</div><button class="secondary" id="moreMedia" data-action="moreMedia" hidden>Next page</button>')}function navigation(){const links=structuredClone(shared.navigation?.value ?? [{label:'Collections',url:'/collection.html'},{label:'Gallery',url:'/gallery.html'},{label:'The House',url:'/house.html'},{label:'Craftsmanship',url:'/craftsmanship.html'}]);return head('Navigation','Publish storefront menu links.')+notice+panel('Main menu',links.map((x,i)=>'<div class="list-row"><div><strong>'+esc(x.label)+'</strong><small> '+esc(x.url)+'</small></div><span><button class="secondary" data-nav-up="'+i+'">↑</button> <button class="secondary" data-nav-down="'+i+'">↓</button> <button class="secondary" data-nav-remove="'+i+'">Delete</button></span></div>').join('')+'<form id="navAddForm" class="form-grid"><label class="field">Label<input name="label" required maxlength="60"></label><label class="field">URL<input name="url" required maxlength="500" placeholder="./index.html#collections"></label><button class="primary" type="submit">Add menu link</button></form>')}function settings(){return head('Settings','Store preferences.')+panel('Delivery planning','<label class="field">Standard delivery fee (₦)<input type="number" min="0" id="shipping" value="'+Number(state.settings.shipping||0)+'"></label><p>Applied once per order at checkout.</p><button class="primary" data-action="saveSettings">Save delivery fee</button>')}function marketing() {
